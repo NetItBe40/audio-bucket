@@ -19,22 +19,15 @@ const Login = () => {
 
   const handleQuickLogin = async () => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithOtp({
         email: "test@example.com",
-        password: "testpassword123",
       });
       
       if (error) {
-        // Si l'utilisateur n'existe pas, on le crée
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: "test@example.com",
-          password: "testpassword123",
-        });
-        
-        if (signUpError) {
-          toast.error("Erreur lors de la connexion rapide");
-          console.error(signUpError);
-        }
+        toast.error("Erreur lors de la connexion rapide");
+        console.error(error);
+      } else {
+        toast.success("Un email de connexion a été envoyé à test@example.com");
       }
     } catch (error) {
       toast.error("Erreur lors de la connexion rapide");

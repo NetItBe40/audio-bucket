@@ -8,7 +8,6 @@ const Login = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Vérifier si l'utilisateur est déjà connecté
     supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         navigate("/");

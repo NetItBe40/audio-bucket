@@ -10,11 +10,22 @@ const Login = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Vérifie si l'utilisateur est déjà connecté
     supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         navigate("/");
       }
     });
+
+    // Vérifie les erreurs dans l'URL
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const error = hashParams.get("error");
+    const errorDescription = hashParams.get("error_description");
+    
+    if (error) {
+      console.error("Erreur d'authentification:", error, errorDescription);
+      toast.error(errorDescription || "Erreur lors de l'authentification");
+    }
   }, [navigate]);
 
   const handleQuickLogin = async () => {

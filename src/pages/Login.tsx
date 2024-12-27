@@ -19,22 +19,21 @@ const Login = () => {
 
   const handleQuickLogin = async () => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // First try to create the user
+      const { error: signUpError } = await supabase.auth.signUp({
         email: "test@example.com",
         password: "testpassword123",
       });
       
-      if (error) {
-        // Si l'utilisateur n'existe pas, on le crée
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: "test@example.com",
-          password: "testpassword123",
-        });
-        
-        if (signUpError) {
-          toast.error("Erreur lors de la connexion rapide");
-          console.error(signUpError);
-        }
+      // Whether the user was created or already existed, try to sign in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: "test@example.com",
+        password: "testpassword123",
+      });
+      
+      if (signInError) {
+        toast.error("Erreur lors de la connexion rapide");
+        console.error(signInError);
       }
     } catch (error) {
       toast.error("Erreur lors de la connexion rapide");

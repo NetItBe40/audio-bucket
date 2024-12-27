@@ -60,6 +60,18 @@ const AudioRecorder = () => {
     if (!audioBlob) return;
 
     try {
+      // Get the current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: "Vous devez être connecté pour sauvegarder un enregistrement",
+        });
+        return;
+      }
+
       const fileName = `recording-${Date.now()}.webm`;
       const { data, error } = await supabase.storage
         .from("audio-recordings")
@@ -72,6 +84,7 @@ const AudioRecorder = () => {
         file_path: data.path,
         file_size: audioBlob.size,
         duration: 0, // We'll implement duration calculation later
+        user_id: user.id // Add the user_id here
       });
 
       if (dbError) throw dbError;

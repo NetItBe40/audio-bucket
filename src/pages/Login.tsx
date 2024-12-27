@@ -18,13 +18,23 @@ const Login = () => {
     });
 
     // Vérifie les erreurs dans l'URL
+    const searchParams = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const error = hashParams.get("error");
-    const errorDescription = hashParams.get("error_description");
+    
+    // Gestion des erreurs provenant de l'URL ou du hash
+    const error = searchParams.get("error") || hashParams.get("error");
+    const errorDescription = searchParams.get("error_description") || hashParams.get("error_description");
     
     if (error) {
       console.error("Erreur d'authentification:", error, errorDescription);
-      toast.error(errorDescription || "Erreur lors de l'authentification");
+      
+      // Messages d'erreur personnalisés
+      let errorMessage = "Erreur lors de l'authentification";
+      if (error === "access_denied" && errorDescription?.includes("Email link")) {
+        errorMessage = "Le lien de confirmation a expiré. Veuillez réessayer de vous connecter.";
+      }
+      
+      toast.error(errorMessage);
     }
   }, [navigate]);
 
@@ -42,6 +52,9 @@ const Login = () => {
         const { error: signUpError } = await supabase.auth.signUp({
           email: "test@example.com",
           password: "testpassword123",
+          options: {
+            emailRedirectTo: window.location.origin
+          }
         });
 
         if (signUpError) {
@@ -50,17 +63,11 @@ const Login = () => {
           return;
         }
 
-        // Après la création réussie, on essaie de se connecter à nouveau
-        const { error: secondSignInError } = await supabase.auth.signInWithPassword({
-          email: "test@example.com",
-          password: "testpassword123",
-        });
-
-        if (secondSignInError) {
-          toast.error("Erreur lors de la connexion");
-          console.error("Erreur second signin:", secondSignInError);
-        }
+        toast.success("Compte créé avec succès! Veuillez vérifier vos emails.");
+        return;
       }
+
+      toast.success("Connexion réussie!");
     } catch (error) {
       toast.error("Erreur lors de la connexion rapide");
       console.error("Erreur générale:", error);
@@ -106,6 +113,7 @@ const Login = () => {
               },
             },
           }}
+          redirectTo={window.location.origin}
         />
       </div>
     </div>

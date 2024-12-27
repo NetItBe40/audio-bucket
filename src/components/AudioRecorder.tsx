@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Mic, Square, Save } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 const AudioRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -10,6 +11,7 @@ const AudioRecorder = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const startRecording = async () => {
     try {
@@ -94,6 +96,9 @@ const AudioRecorder = () => {
         description: "Enregistrement sauvegardé avec succès",
       });
       setAudioBlob(null);
+      
+      // Rafraîchir la liste des enregistrements
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
     } catch (error) {
       console.error("Error saving recording:", error);
       toast({

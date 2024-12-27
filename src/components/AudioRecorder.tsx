@@ -1,13 +1,15 @@
-import { useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Mic, Square, Save } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState, useRef } from "react";
+import AudioPreview from "./AudioPreview";
+import RecordButton from "./RecordButton";
+import SaveDialog from "./SaveDialog";
 
 const AudioRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
@@ -16,33 +18,29 @@ const AudioRecorder = () => {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
-      mediaRecorderRef.current.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
+      mediaRecorder.ondataavailable = (e) => {
+        chunksRef.current.push(e.data);
       };
 
-      mediaRecorderRef.current.onstop = () => {
+      mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
       };
 
-      mediaRecorderRef.current.start();
+      mediaRecorder.start();
       setIsRecording(true);
-      toast({
-        title: "Enregistrement démarré",
-        description: "Parlez maintenant...",
-      });
     } catch (error) {
       console.error("Error accessing microphone:", error);
       toast({
-        variant: "destructive",
         title: "Erreur",
-        description: "Impossible d'accéder au microphone",
+        description:
+          "Impossible d'accéder au microphone. Veuillez vérifier les permissions.",
+        variant: "destructive",
       });
     }
   };
@@ -51,99 +49,85 @@ const AudioRecorder = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      toast({
-        title: "Enregistrement terminé",
-        description: "Vous pouvez maintenant sauvegarder l'enregistrement",
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => {
+        track.stop();
       });
     }
   };
 
-  const saveRecording = async () => {
-    if (!audioBlob) return;
+  const handleToggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  const handleSave = async (title: string) => {
+    if (!audioUrl) return;
 
     try {
-      // Get the current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast({
-          variant: "destructive",
-          title: "Erreur",
-          description: "Vous devez être connecté pour sauvegarder un enregistrement",
-        });
-        return;
-      }
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error("User not authenticated");
 
-      const fileName = `recording-${Date.now()}.webm`;
-      const { data, error } = await supabase.storage
+      const blob = await fetch(audioUrl).then((r) => r.blob());
+      const fileName = `${user.id}/${Date.now()}.webm`;
+
+      const { error: uploadError } = await supabase.storage
         .from("audio-recordings")
-        .upload(fileName, audioBlob);
+        .upload(fileName, blob);
 
-      if (error) throw error;
+      if (uploadError) throw uploadError;
 
-      const { error: dbError } = await supabase.from("recordings").insert({
-        title: fileName,
-        file_path: data.path,
-        file_size: audioBlob.size,
-        duration: 0, // We'll implement duration calculation later
-        user_id: user.id // Add the user_id here
+      const { error: insertError } = await supabase.from("recordings").insert({
+        title,
+        file_path: fileName,
+        file_size: blob.size,
+        duration: 0,
+        user_id: user.id,
       });
 
-      if (dbError) throw dbError;
+      if (insertError) throw insertError;
 
+      queryClient.invalidateQueries({ queryKey: ["recordings"] });
+      setShowSaveDialog(false);
+      setAudioUrl(null);
       toast({
         title: "Succès",
-        description: "Enregistrement sauvegardé avec succès",
+        description: "L'enregistrement a été sauvegardé avec succès.",
       });
-      setAudioBlob(null);
-      
-      // Rafraîchir la liste des enregistrements
-      queryClient.invalidateQueries({ queryKey: ["recordings"] });
     } catch (error) {
       console.error("Error saving recording:", error);
       toast({
-        variant: "destructive",
         title: "Erreur",
-        description: "Impossible de sauvegarder l'enregistrement",
+        description: "Une erreur est survenue lors de la sauvegarde.",
+        variant: "destructive",
       });
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-center gap-4">
-        {!isRecording ? (
-          <Button
-            onClick={startRecording}
-            className="bg-red-500 hover:bg-red-600"
-          >
-            <Mic className="mr-2" />
-            Démarrer l'enregistrement
-          </Button>
-        ) : (
-          <Button
-            onClick={stopRecording}
-            variant="destructive"
-          >
-            <Square className="mr-2" />
-            Arrêter l'enregistrement
-          </Button>
-        )}
-      </div>
+  const handleDiscard = () => {
+    setAudioUrl(null);
+  };
 
-      {audioBlob && (
-        <div className="space-y-4">
-          <audio
-            src={URL.createObjectURL(audioBlob)}
-            controls
-            className="w-full"
-          />
-          <Button onClick={saveRecording} className="w-full">
-            <Save className="mr-2" />
-            Sauvegarder l'enregistrement
-          </Button>
-        </div>
+  return (
+    <div className="space-y-4 p-4 bg-white rounded-lg shadow-sm">
+      <RecordButton
+        isRecording={isRecording}
+        onToggleRecording={handleToggleRecording}
+      />
+      {audioUrl && (
+        <AudioPreview
+          audioUrl={audioUrl}
+          onSave={() => setShowSaveDialog(true)}
+          onDiscard={handleDiscard}
+        />
       )}
+      <SaveDialog
+        isOpen={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        onSave={handleSave}
+      />
     </div>
   );
 };

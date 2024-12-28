@@ -9,10 +9,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { TranscriptionDisplay } from "../TranscriptionDisplay";
 import { RecordingHeader } from "./RecordingHeader";
 import { Tables } from "@/integrations/supabase/types";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 type RecordingItemProps = {
   recording: Tables<"recordings"> & {
@@ -30,14 +40,41 @@ export const RecordingItem = ({
   isPlaying,
   isTranscribing,
   onPlayToggle,
-  onTranscribe,
   onDelete,
 }: RecordingItemProps) => {
   const { toast } = useToast();
-  // Set isTranscriptionVisible to false by default
   const [isTranscriptionVisible, setIsTranscriptionVisible] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showTranscribeDialog, setShowTranscribeDialog] = useState(false);
+  const [speakerDetection, setSpeakerDetection] = useState(false);
   const transcription = recording.transcriptions?.[0];
+
+  const handleTranscribe = async () => {
+    try {
+      const { error } = await supabase.functions.invoke("transcribe", {
+        body: { 
+          recordingId: recording.id,
+          speakerDetection,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Succès",
+        description: "La transcription a démarré",
+      });
+
+      setShowTranscribeDialog(false);
+    } catch (error) {
+      console.error("Error starting transcription:", error);
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible de démarrer la transcription",
+      });
+    }
+  };
 
   const handleCopyTranscription = async () => {
     if (!transcription?.text) return;
@@ -85,7 +122,7 @@ export const RecordingItem = ({
         transcription={transcription}
         isTranscriptionVisible={isTranscriptionVisible}
         onPlayToggle={onPlayToggle}
-        onTranscribe={onTranscribe}
+        onTranscribe={() => setShowTranscribeDialog(true)}
         onCopyTranscription={handleCopyTranscription}
         onToggleTranscriptionVisibility={() => setIsTranscriptionVisible(!isTranscriptionVisible)}
         onExportTranscription={handleExportTranscription}
@@ -95,6 +132,38 @@ export const RecordingItem = ({
       {transcription && isTranscriptionVisible && (
         <TranscriptionDisplay transcription={transcription} />
       )}
+
+      <Dialog open={showTranscribeDialog} onOpenChange={setShowTranscribeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Options de transcription</DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center space-x-2 py-4">
+            <Switch
+              id="speaker-detection"
+              checked={speakerDetection}
+              onCheckedChange={setSpeakerDetection}
+            />
+            <Label htmlFor="speaker-detection">
+              Activer la détection des intervenants
+            </Label>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <button
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 rounded-md"
+              onClick={() => setShowTranscribeDialog(false)}
+            >
+              Annuler
+            </button>
+            <button
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 rounded-md"
+              onClick={handleTranscribe}
+            >
+              Démarrer
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent className="sm:max-w-[425px]">

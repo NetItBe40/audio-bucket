@@ -13,16 +13,14 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 const supabase = createClient(supabaseUrl!, supabaseServiceKey!)
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { recordingId } = await req.json()
-    console.log('Starting transcription for recording:', recordingId)
+    const { recordingId, speakerDetection } = await req.json()
+    console.log('Starting transcription for recording:', recordingId, 'with speaker detection:', speakerDetection)
 
-    // Get the recording file path
     const { data: recording, error: recordingError } = await supabase
       .from('recordings')
       .select('file_path')
@@ -36,7 +34,6 @@ serve(async (req) => {
 
     console.log('Found recording with file path:', recording.file_path)
 
-    // Get a signed URL for the audio file
     const { data: { signedUrl }, error: signedUrlError } = await supabase
       .storage
       .from('audio-recordings')
@@ -59,6 +56,7 @@ serve(async (req) => {
       body: JSON.stringify({
         audio_url: signedUrl,
         language_detection: true,
+        speaker_labels: speakerDetection, // Enable speaker detection if requested
       }),
     })
 
@@ -71,12 +69,13 @@ serve(async (req) => {
     const transcriptionData = await response.json()
     console.log('Created AssemblyAI transcription:', transcriptionData)
 
-    // Store the initial transcription record
+    // Store the initial transcription record with speaker detection flag
     const { error: insertError } = await supabase
       .from('transcriptions')
       .insert({
         recording_id: recordingId,
         status: 'processing',
+        speaker_detection: speakerDetection,
       })
 
     if (insertError) {
@@ -116,6 +115,7 @@ serve(async (req) => {
               status: 'completed',
               text: statusData.text,
               language: statusData.language_code,
+              speaker_labels: speakerDetection ? statusData.utterances : null,
             })
             .eq('recording_id', recordingId)
 

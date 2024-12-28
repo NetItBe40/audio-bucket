@@ -77,6 +77,8 @@ export type Database = {
           id: string
           language: string | null
           recording_id: string
+          speaker_detection: boolean | null
+          speaker_labels: Json | null
           status: string
           text: string | null
           updated_at: string
@@ -86,6 +88,8 @@ export type Database = {
           id?: string
           language?: string | null
           recording_id: string
+          speaker_detection?: boolean | null
+          speaker_labels?: Json | null
           status?: string
           text?: string | null
           updated_at?: string
@@ -95,6 +99,8 @@ export type Database = {
           id?: string
           language?: string | null
           recording_id?: string
+          speaker_detection?: boolean | null
+          speaker_labels?: Json | null
           status?: string
           text?: string | null
           updated_at?: string

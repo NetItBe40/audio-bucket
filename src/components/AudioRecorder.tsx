@@ -31,16 +31,31 @@ const AudioRecorder = () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const url = URL.createObjectURL(blob);
         
-        // Attendre que l'audio soit chargé avant de définir l'URL
-        const audio = new Audio(url);
-        await new Promise((resolve) => {
-          audio.addEventListener('loadedmetadata', () => {
-            setAudioDuration(Math.round(audio.duration));
-            resolve(null);
+        try {
+          const audio = new Audio(url);
+          await new Promise<void>((resolve, reject) => {
+            audio.addEventListener('loadedmetadata', () => {
+              const duration = Math.round(audio.duration);
+              console.log("Audio duration calculated:", duration);
+              setAudioDuration(duration);
+              resolve();
+            });
+            
+            audio.addEventListener('error', (e) => {
+              console.error("Error loading audio:", e);
+              reject(new Error("Failed to load audio"));
+            });
           });
-        });
-        
-        setAudioUrl(url);
+          
+          setAudioUrl(url);
+        } catch (error) {
+          console.error("Error processing audio:", error);
+          toast({
+            title: "Erreur",
+            description: "Impossible de traiter l'audio.",
+            variant: "destructive",
+          });
+        }
       };
 
       mediaRecorder.start();
@@ -84,7 +99,7 @@ const AudioRecorder = () => {
       const blob = await fetch(audioUrl).then((r) => r.blob());
       const fileName = `${user.id}/${Date.now()}.webm`;
 
-      console.log("Saving audio with duration:", audioDuration); // Debug log
+      console.log("Saving audio with duration:", audioDuration);
 
       const { error: uploadError } = await supabase.storage
         .from("audio-recordings")

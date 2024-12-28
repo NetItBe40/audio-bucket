@@ -28,16 +28,17 @@ const AudioUpload = () => {
       const audio = new Audio(url);
       
       try {
-        await new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
           audio.addEventListener('loadedmetadata', () => {
             const duration = Math.round(audio.duration);
-            console.log("Audio duration:", duration); // Debug log
+            console.log("Audio duration calculated:", duration);
             setAudioDuration(duration);
-            resolve(null);
+            resolve();
           });
           
           audio.addEventListener('error', (e) => {
-            reject(new Error("Error loading audio file"));
+            console.error("Error loading audio:", e);
+            reject(new Error("Failed to load audio"));
           });
         });
         
@@ -85,7 +86,7 @@ const AudioUpload = () => {
 
       const fileName = `${user.id}/${Date.now()}.${currentFile.name.split('.').pop()}`;
 
-      console.log("Saving audio with duration:", audioDuration); // Debug log
+      console.log("Saving audio with duration:", audioDuration);
 
       const { error: uploadError } = await supabase.storage
         .from("audio-recordings")

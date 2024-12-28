@@ -38,9 +38,9 @@ const AudioRecorder = () => {
           await new Promise<void>((resolve, reject) => {
             const timeoutId = setTimeout(() => {
               reject(new Error("Timeout waiting for audio metadata"));
-            }, 5000);
+            }, 10000); // Augmenté à 10 secondes
 
-            audio.addEventListener('loadedmetadata', () => {
+            audio.addEventListener('canplaythrough', () => {
               const calculatedDuration = Math.round(audio.duration);
               if (isFinite(calculatedDuration) && calculatedDuration > 0) {
                 duration = calculatedDuration;
@@ -60,6 +60,7 @@ const AudioRecorder = () => {
             }, { once: true });
 
             audio.src = url;
+            audio.load(); // Explicitement charger l'audio
           });
 
           console.log("Setting duration in state:", duration);

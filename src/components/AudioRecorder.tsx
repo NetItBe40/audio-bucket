@@ -10,6 +10,7 @@ const AudioRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [audioDuration, setAudioDuration] = useState<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
@@ -30,6 +31,12 @@ const AudioRecorder = () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
+        
+        // Calculer la durée de l'audio
+        const audio = new Audio(url);
+        audio.addEventListener('loadedmetadata', () => {
+          setAudioDuration(Math.round(audio.duration));
+        });
       };
 
       mediaRecorder.start();
@@ -83,7 +90,7 @@ const AudioRecorder = () => {
         title,
         file_path: fileName,
         file_size: blob.size,
-        duration: 0,
+        duration: audioDuration,
         user_id: user.id,
       });
 
@@ -92,6 +99,7 @@ const AudioRecorder = () => {
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
       setShowSaveDialog(false);
       setAudioUrl(null);
+      setAudioDuration(0);
       toast({
         title: "Succès",
         description: "L'enregistrement a été sauvegardé avec succès.",

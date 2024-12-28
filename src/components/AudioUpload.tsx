@@ -9,6 +9,7 @@ const AudioUpload = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [audioDuration, setAudioDuration] = useState<number>(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -21,14 +22,15 @@ const AudioUpload = () => {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const file = e.dataTransfer.files[0];
+  const processAudioFile = (file: File) => {
     if (file && file.type.startsWith("audio/")) {
-      setCurrentFile(file);
-      setShowSaveDialog(true);
+      const url = URL.createObjectURL(file);
+      const audio = new Audio(url);
+      audio.addEventListener('loadedmetadata', () => {
+        setAudioDuration(Math.round(audio.duration));
+        setCurrentFile(file);
+        setShowSaveDialog(true);
+      });
     } else {
       toast({
         title: "Erreur",
@@ -38,17 +40,17 @@ const AudioUpload = () => {
     }
   };
 
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    processAudioFile(file);
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type.startsWith("audio/")) {
-      setCurrentFile(file);
-      setShowSaveDialog(true);
-    } else {
-      toast({
-        title: "Erreur",
-        description: "Veuillez sélectionner un fichier audio valide.",
-        variant: "destructive",
-      });
+    if (file) {
+      processAudioFile(file);
     }
   };
 
@@ -71,7 +73,7 @@ const AudioUpload = () => {
         title,
         file_path: fileName,
         file_size: currentFile.size,
-        duration: 0,
+        duration: audioDuration,
         user_id: user.id,
       });
 
@@ -80,6 +82,7 @@ const AudioUpload = () => {
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
       setShowSaveDialog(false);
       setCurrentFile(null);
+      setAudioDuration(0);
       toast({
         title: "Succès",
         description: "Le fichier a été importé avec succès.",

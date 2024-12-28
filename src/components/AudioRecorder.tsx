@@ -10,7 +10,6 @@ const AudioRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [audioDuration, setAudioDuration] = useState<number>(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
@@ -27,52 +26,10 @@ const AudioRecorder = () => {
         chunksRef.current.push(e.data);
       };
 
-      mediaRecorder.onstop = async () => {
+      mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const url = URL.createObjectURL(blob);
-        
-        try {
-          const audio = new Audio();
-          
-          await new Promise<void>((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-              reject(new Error("Timeout waiting for audio metadata"));
-            }, 10000);
-
-            const handleCanPlay = () => {
-              const duration = Math.round(audio.duration);
-              if (isFinite(duration) && duration > 0) {
-                console.log("Audio duration calculated in recorder:", duration);
-                clearTimeout(timeoutId);
-                setAudioDuration(duration);
-                setAudioUrl(url);
-                resolve();
-              } else {
-                clearTimeout(timeoutId);
-                reject(new Error("Invalid duration calculated"));
-              }
-            };
-
-            const handleError = (e: ErrorEvent) => {
-              clearTimeout(timeoutId);
-              console.error("Error loading audio:", e);
-              reject(new Error("Failed to load audio"));
-            };
-
-            audio.addEventListener('canplaythrough', handleCanPlay, { once: true });
-            audio.addEventListener('error', handleError, { once: true });
-
-            audio.src = url;
-            audio.load();
-          });
-        } catch (error) {
-          console.error("Error processing audio:", error);
-          toast({
-            title: "Erreur",
-            description: "Impossible de traiter l'audio.",
-            variant: "destructive",
-          });
-        }
+        setAudioUrl(url);
       };
 
       mediaRecorder.start();
@@ -116,12 +73,6 @@ const AudioRecorder = () => {
       const blob = await fetch(audioUrl).then((r) => r.blob());
       const fileName = `${user.id}/${Date.now()}.webm`;
 
-      if (!isFinite(audioDuration) || audioDuration <= 0) {
-        throw new Error("Invalid audio duration");
-      }
-
-      console.log("Saving audio with duration:", audioDuration);
-
       const { error: uploadError } = await supabase.storage
         .from("audio-recordings")
         .upload(fileName, blob);
@@ -132,7 +83,7 @@ const AudioRecorder = () => {
         title,
         file_path: fileName,
         file_size: blob.size,
-        duration: audioDuration,
+        duration: 0,
         user_id: user.id,
       });
 
@@ -141,7 +92,6 @@ const AudioRecorder = () => {
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
       setShowSaveDialog(false);
       setAudioUrl(null);
-      setAudioDuration(0);
       toast({
         title: "Succès",
         description: "L'enregistrement a été sauvegardé avec succès.",
@@ -158,7 +108,6 @@ const AudioRecorder = () => {
 
   const handleDiscard = () => {
     setAudioUrl(null);
-    setAudioDuration(0);
   };
 
   return (

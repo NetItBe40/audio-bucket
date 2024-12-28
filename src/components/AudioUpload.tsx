@@ -9,7 +9,6 @@ const AudioUpload = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
-  const [audioDuration, setAudioDuration] = useState<number>(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -22,52 +21,14 @@ const AudioUpload = () => {
     setIsDragging(false);
   };
 
-  const processAudioFile = async (file: File) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith("audio/")) {
-      const url = URL.createObjectURL(file);
-      const audio = new Audio();
-      
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            reject(new Error("Timeout waiting for audio metadata"));
-          }, 10000);
-
-          const handleCanPlay = () => {
-            const duration = Math.round(audio.duration);
-            if (isFinite(duration) && duration > 0) {
-              console.log("Audio duration calculated in upload:", duration);
-              clearTimeout(timeoutId);
-              setAudioDuration(duration);
-              setCurrentFile(file);
-              setShowSaveDialog(true);
-              resolve();
-            } else {
-              clearTimeout(timeoutId);
-              reject(new Error("Invalid duration calculated"));
-            }
-          };
-
-          const handleError = (e: ErrorEvent) => {
-            clearTimeout(timeoutId);
-            console.error("Error loading audio:", e);
-            reject(new Error("Failed to load audio"));
-          };
-
-          audio.addEventListener('canplaythrough', handleCanPlay, { once: true });
-          audio.addEventListener('error', handleError, { once: true });
-
-          audio.src = url;
-          audio.load();
-        });
-      } catch (error) {
-        console.error("Error processing audio file:", error);
-        toast({
-          title: "Erreur",
-          description: "Impossible de traiter le fichier audio.",
-          variant: "destructive",
-        });
-      }
+      setCurrentFile(file);
+      setShowSaveDialog(true);
     } else {
       toast({
         title: "Erreur",
@@ -77,19 +38,17 @@ const AudioUpload = () => {
     }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      processAudioFile(file);
-    }
-  };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      processAudioFile(file);
+    if (file && file.type.startsWith("audio/")) {
+      setCurrentFile(file);
+      setShowSaveDialog(true);
+    } else {
+      toast({
+        title: "Erreur",
+        description: "Veuillez sélectionner un fichier audio valide.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -102,12 +61,6 @@ const AudioUpload = () => {
 
       const fileName = `${user.id}/${Date.now()}.${currentFile.name.split('.').pop()}`;
 
-      if (!isFinite(audioDuration) || audioDuration <= 0) {
-        throw new Error("Invalid audio duration");
-      }
-
-      console.log("Saving audio with duration:", audioDuration);
-
       const { error: uploadError } = await supabase.storage
         .from("audio-recordings")
         .upload(fileName, currentFile);
@@ -118,7 +71,7 @@ const AudioUpload = () => {
         title,
         file_path: fileName,
         file_size: currentFile.size,
-        duration: audioDuration,
+        duration: 0,
         user_id: user.id,
       });
 
@@ -127,7 +80,6 @@ const AudioUpload = () => {
       queryClient.invalidateQueries({ queryKey: ["recordings"] });
       setShowSaveDialog(false);
       setCurrentFile(null);
-      setAudioDuration(0);
       toast({
         title: "Succès",
         description: "Le fichier a été importé avec succès.",

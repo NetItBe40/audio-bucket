@@ -27,16 +27,20 @@ const AudioRecorder = () => {
         chunksRef.current.push(e.data);
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const url = URL.createObjectURL(blob);
-        setAudioUrl(url);
         
-        // Calculer la durée de l'audio
+        // Attendre que l'audio soit chargé avant de définir l'URL
         const audio = new Audio(url);
-        audio.addEventListener('loadedmetadata', () => {
-          setAudioDuration(Math.round(audio.duration));
+        await new Promise((resolve) => {
+          audio.addEventListener('loadedmetadata', () => {
+            setAudioDuration(Math.round(audio.duration));
+            resolve(null);
+          });
         });
+        
+        setAudioUrl(url);
       };
 
       mediaRecorder.start();
@@ -80,6 +84,8 @@ const AudioRecorder = () => {
       const blob = await fetch(audioUrl).then((r) => r.blob());
       const fileName = `${user.id}/${Date.now()}.webm`;
 
+      console.log("Saving audio with duration:", audioDuration); // Debug log
+
       const { error: uploadError } = await supabase.storage
         .from("audio-recordings")
         .upload(fileName, blob);
@@ -116,6 +122,7 @@ const AudioRecorder = () => {
 
   const handleDiscard = () => {
     setAudioUrl(null);
+    setAudioDuration(0);
   };
 
   return (

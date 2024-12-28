@@ -22,15 +22,35 @@ const AudioUpload = () => {
     setIsDragging(false);
   };
 
-  const processAudioFile = (file: File) => {
+  const processAudioFile = async (file: File) => {
     if (file && file.type.startsWith("audio/")) {
       const url = URL.createObjectURL(file);
       const audio = new Audio(url);
-      audio.addEventListener('loadedmetadata', () => {
-        setAudioDuration(Math.round(audio.duration));
+      
+      try {
+        await new Promise((resolve, reject) => {
+          audio.addEventListener('loadedmetadata', () => {
+            const duration = Math.round(audio.duration);
+            console.log("Audio duration:", duration); // Debug log
+            setAudioDuration(duration);
+            resolve(null);
+          });
+          
+          audio.addEventListener('error', (e) => {
+            reject(new Error("Error loading audio file"));
+          });
+        });
+        
         setCurrentFile(file);
         setShowSaveDialog(true);
-      });
+      } catch (error) {
+        console.error("Error processing audio file:", error);
+        toast({
+          title: "Erreur",
+          description: "Impossible de traiter le fichier audio.",
+          variant: "destructive",
+        });
+      }
     } else {
       toast({
         title: "Erreur",
@@ -44,7 +64,9 @@ const AudioUpload = () => {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
-    processAudioFile(file);
+    if (file) {
+      processAudioFile(file);
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,6 +84,8 @@ const AudioUpload = () => {
       if (!user) throw new Error("User not authenticated");
 
       const fileName = `${user.id}/${Date.now()}.${currentFile.name.split('.').pop()}`;
+
+      console.log("Saving audio with duration:", audioDuration); // Debug log
 
       const { error: uploadError } = await supabase.storage
         .from("audio-recordings")

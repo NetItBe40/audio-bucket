@@ -6,9 +6,9 @@ import RecordingsList from "@/components/RecordingsList";
 const Index = () => {
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto space-y-12">
-        <div className="space-y-8">
-          <h2 className="text-2xl font-bold text-center">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 space-y-8 sm:space-y-12">
+        <div className="space-y-6 sm:space-y-8">
+          <h2 className="text-xl sm:text-2xl font-bold text-center">
             Nouvel enregistrement
           </h2>
           <AudioRecorder />
@@ -16,7 +16,7 @@ const Index = () => {
         </div>
 
         <div>
-          <h2 className="text-2xl font-bold mb-8 text-center">
+          <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8 text-center">
             Mes enregistrements
           </h2>
           <RecordingsList />

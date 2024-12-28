@@ -8,7 +8,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { TranscriptionDisplay } from "../TranscriptionDisplay";
 import { RecordingHeader } from "./RecordingHeader";
@@ -35,7 +34,8 @@ export const RecordingItem = ({
   onDelete,
 }: RecordingItemProps) => {
   const { toast } = useToast();
-  const [isTranscriptionVisible, setIsTranscriptionVisible] = useState(true);
+  // Set isTranscriptionVisible to false by default
+  const [isTranscriptionVisible, setIsTranscriptionVisible] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const transcription = recording.transcriptions?.[0];
 
@@ -75,7 +75,7 @@ export const RecordingItem = ({
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow-sm space-y-4">
+    <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm space-y-3 sm:space-y-4">
       <RecordingHeader
         title={recording.title}
         duration={recording.duration}
@@ -97,7 +97,7 @@ export const RecordingItem = ({
       )}
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="sm:max-w-[425px]">
           <AlertDialogHeader>
             <AlertDialogTitle>Êtes-vous sûr ?</AlertDialogTitle>
             <AlertDialogDescription>

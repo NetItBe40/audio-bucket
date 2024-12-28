@@ -18,9 +18,13 @@ const RecordingsList = () => {
         .select(`
           *,
           transcriptions (
+            id,
+            recording_id,
             status,
             text,
-            language
+            language,
+            created_at,
+            updated_at
           )
         `)
         .order("created_at", { ascending: false });

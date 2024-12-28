@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { RecordingControls } from "./RecordingControls";
+import { RecordingControls } from "../RecordingControls";
 
 type RecordingHeaderProps = {
   title: string;
@@ -44,7 +44,6 @@ export const RecordingHeader = ({
         isTranscribing={isTranscribing}
         onPlayToggle={onPlayToggle}
         onTranscribe={onTranscribe}
-        onDelete={onDelete}
       />
     </div>
   );

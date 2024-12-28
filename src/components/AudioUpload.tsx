@@ -25,33 +25,35 @@ const AudioUpload = () => {
   const processAudioFile = async (file: File) => {
     if (file && file.type.startsWith("audio/")) {
       const url = URL.createObjectURL(file);
-      const audio = new Audio(url);
+      const audio = new Audio();
       
       try {
         let duration = 0;
         await new Promise<void>((resolve, reject) => {
           const timeoutId = setTimeout(() => {
             reject(new Error("Timeout waiting for audio metadata"));
-          }, 5000); // 5 secondes timeout
+          }, 5000);
 
           audio.addEventListener('loadedmetadata', () => {
             duration = Math.round(audio.duration);
             console.log("Audio duration calculated in upload:", duration);
             clearTimeout(timeoutId);
             resolve();
-          });
+          }, { once: true });
           
           audio.addEventListener('error', (e) => {
             clearTimeout(timeoutId);
             console.error("Error loading audio:", e);
             reject(new Error("Failed to load audio"));
-          });
+          }, { once: true });
+
+          audio.src = url;
         });
         
+        console.log("Setting duration in state:", duration);
         setAudioDuration(duration);
         setCurrentFile(file);
         setShowSaveDialog(true);
-        console.log("Final duration set in upload:", duration);
       } catch (error) {
         console.error("Error processing audio file:", error);
         toast({

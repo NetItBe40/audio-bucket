@@ -32,31 +32,33 @@ const AudioRecorder = () => {
         const url = URL.createObjectURL(blob);
         
         try {
-          const audio = new Audio(url);
+          const audio = new Audio();
           let duration = 0;
           
           await new Promise<void>((resolve, reject) => {
             const timeoutId = setTimeout(() => {
               reject(new Error("Timeout waiting for audio metadata"));
-            }, 5000); // 5 secondes timeout
+            }, 5000);
 
             audio.addEventListener('loadedmetadata', () => {
               duration = Math.round(audio.duration);
               console.log("Audio duration calculated in recorder:", duration);
               clearTimeout(timeoutId);
               resolve();
-            });
+            }, { once: true });
             
             audio.addEventListener('error', (e) => {
               clearTimeout(timeoutId);
               console.error("Error loading audio:", e);
               reject(new Error("Failed to load audio"));
-            });
+            }, { once: true });
+
+            audio.src = url;
           });
 
+          console.log("Setting duration in state:", duration);
           setAudioDuration(duration);
           setAudioUrl(url);
-          console.log("Final duration set in recorder:", duration);
         } catch (error) {
           console.error("Error processing audio:", error);
           toast({

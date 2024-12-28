@@ -71,6 +71,44 @@ export type Database = {
           },
         ]
       }
+      transcriptions: {
+        Row: {
+          created_at: string
+          id: string
+          language: string | null
+          recording_id: string
+          status: string
+          text: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          language?: string | null
+          recording_id: string
+          status?: string
+          text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          language?: string | null
+          recording_id?: string
+          status?: string
+          text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transcriptions_recording_id_fkey"
+            columns: ["recording_id"]
+            isOneToOne: false
+            referencedRelation: "recordings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

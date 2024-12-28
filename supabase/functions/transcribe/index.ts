@@ -61,6 +61,7 @@ serve(async (req) => {
         language_detection: true,
         speaker_labels: speakerDetection,
         entity_detection: entityDetection,
+        speakers_expected: speakerDetection ? 2 : undefined, // Aide à la détection des intervenants
       }),
     })
 
@@ -113,6 +114,13 @@ serve(async (req) => {
         console.log('Received status:', statusData.status)
 
         if (statusData.status === 'completed') {
+          console.log('Transcription completed with:', {
+            text: statusData.text,
+            language: statusData.language_code,
+            utterances: statusData.utterances,
+            entities: statusData.entities
+          })
+
           const { error: updateError } = await supabase
             .from('transcriptions')
             .update({

@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Play, Square, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useState, useRef } from "react";
 
@@ -110,6 +110,13 @@ const RecordingsList = () => {
     );
   }
 
+  const formatDuration = (duration: number | null) => {
+    if (!duration) return "Durée inconnue";
+    const minutes = Math.floor(duration / 60);
+    const seconds = duration % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className="space-y-4">
       {recordings.map((recording) => (
@@ -120,10 +127,7 @@ const RecordingsList = () => {
           <div className="flex-1">
             <h3 className="font-medium">{recording.title}</h3>
             <p className="text-sm text-gray-500">
-              {formatDistanceToNow(new Date(recording.created_at), {
-                addSuffix: true,
-                locale: fr,
-              })}
+              {formatDuration(recording.duration)} - {format(new Date(recording.created_at), 'dd/MM/yyyy', { locale: fr })}
             </p>
           </div>
           <div className="flex gap-2">

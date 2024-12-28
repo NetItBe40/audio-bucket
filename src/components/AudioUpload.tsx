@@ -28,39 +28,38 @@ const AudioUpload = () => {
       const audio = new Audio();
       
       try {
-        let duration = 0;
         await new Promise<void>((resolve, reject) => {
           const timeoutId = setTimeout(() => {
             reject(new Error("Timeout waiting for audio metadata"));
-          }, 10000); // Augmenté à 10 secondes
+          }, 10000);
 
-          audio.addEventListener('canplaythrough', () => {
-            const calculatedDuration = Math.round(audio.duration);
-            if (isFinite(calculatedDuration) && calculatedDuration > 0) {
-              duration = calculatedDuration;
+          const handleCanPlay = () => {
+            const duration = Math.round(audio.duration);
+            if (isFinite(duration) && duration > 0) {
               console.log("Audio duration calculated in upload:", duration);
               clearTimeout(timeoutId);
+              setAudioDuration(duration);
+              setCurrentFile(file);
+              setShowSaveDialog(true);
               resolve();
             } else {
               clearTimeout(timeoutId);
               reject(new Error("Invalid duration calculated"));
             }
-          }, { once: true });
-          
-          audio.addEventListener('error', (e) => {
+          };
+
+          const handleError = (e: ErrorEvent) => {
             clearTimeout(timeoutId);
             console.error("Error loading audio:", e);
             reject(new Error("Failed to load audio"));
-          }, { once: true });
+          };
+
+          audio.addEventListener('canplaythrough', handleCanPlay, { once: true });
+          audio.addEventListener('error', handleError, { once: true });
 
           audio.src = url;
-          audio.load(); // Explicitement charger l'audio
+          audio.load();
         });
-        
-        console.log("Setting duration in state:", duration);
-        setAudioDuration(duration);
-        setCurrentFile(file);
-        setShowSaveDialog(true);
       } catch (error) {
         console.error("Error processing audio file:", error);
         toast({

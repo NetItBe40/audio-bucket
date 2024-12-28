@@ -1,11 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { format } from "date-fns";
-import { fr } from "date-fns/locale";
 import { useState, useRef, useEffect } from "react";
-import { TranscriptionDisplay } from "./TranscriptionDisplay";
-import { RecordingControls } from "./RecordingControls";
+import { RecordingItem } from "./recording/RecordingItem";
 
 const RecordingsList = () => {
   const { toast } = useToast();
@@ -41,20 +38,17 @@ const RecordingsList = () => {
       const { data } = await supabase
         .from("transcriptions")
         .select("recording_id, status")
-        .in(
-          "recording_id",
-          Array.from(transcribingIds)
-        );
+        .in("recording_id", Array.from(transcribingIds));
 
       if (data) {
         const completedIds = data
-          .filter(t => t.status !== "processing")
-          .map(t => t.recording_id);
+          .filter((t) => t.status !== "processing")
+          .map((t) => t.recording_id);
 
         if (completedIds.length > 0) {
-          setTranscribingIds(prev => {
+          setTranscribingIds((prev) => {
             const next = new Set(prev);
-            completedIds.forEach(id => next.delete(id));
+            completedIds.forEach((id) => next.delete(id));
             return next;
           });
           refetch();
@@ -121,7 +115,7 @@ const RecordingsList = () => {
 
       const audio = new Audio(data.signedUrl);
       audioRef.current = audio;
-      
+
       audio.play();
       setPlayingId(id);
 
@@ -140,8 +134,8 @@ const RecordingsList = () => {
 
   const handleTranscribe = async (id: string) => {
     try {
-      setTranscribingIds(prev => new Set(prev).add(id));
-      
+      setTranscribingIds((prev) => new Set(prev).add(id));
+
       const { error } = await supabase.functions.invoke("transcribe", {
         body: { recordingId: id },
       });
@@ -156,12 +150,12 @@ const RecordingsList = () => {
       refetch();
     } catch (error) {
       console.error("Error starting transcription:", error);
-      setTranscribingIds(prev => {
+      setTranscribingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
         return next;
       });
-      
+
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -182,40 +176,18 @@ const RecordingsList = () => {
     );
   }
 
-  const formatDuration = (duration: number | null) => {
-    if (!duration) return "Durée inconnue";
-    const minutes = Math.floor(duration / 60);
-    const seconds = duration % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
   return (
     <div className="space-y-4">
       {recordings.map((recording) => (
-        <div
+        <RecordingItem
           key={recording.id}
-          className="bg-white p-4 rounded-lg shadow-sm space-y-4"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <h3 className="font-medium">{recording.title}</h3>
-              <p className="text-sm text-gray-500">
-                {formatDuration(recording.duration)} - {format(new Date(recording.created_at), 'dd/MM/yyyy', { locale: fr })}
-              </p>
-            </div>
-            <RecordingControls
-              isPlaying={playingId === recording.id}
-              isTranscribing={transcribingIds.has(recording.id)}
-              onPlayToggle={() => handlePlayToggle(recording.id, recording.file_path)}
-              onTranscribe={() => handleTranscribe(recording.id)}
-              onDelete={() => handleDelete(recording.id, recording.file_path)}
-            />
-          </div>
-
-          {recording.transcriptions?.[0] && (
-            <TranscriptionDisplay transcription={recording.transcriptions[0]} />
-          )}
-        </div>
+          recording={recording}
+          isPlaying={playingId === recording.id}
+          isTranscribing={transcribingIds.has(recording.id)}
+          onPlayToggle={() => handlePlayToggle(recording.id, recording.file_path)}
+          onTranscribe={() => handleTranscribe(recording.id)}
+          onDelete={() => handleDelete(recording.id, recording.file_path)}
+        />
       ))}
     </div>
   );

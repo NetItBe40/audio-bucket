@@ -1,12 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { Play, Square, Trash2, MessageSquare, Loader } from "lucide-react";
+import { Play, Square, MessageSquare, Loader } from "lucide-react";
 
 type RecordingControlsProps = {
   isPlaying: boolean;
   isTranscribing: boolean;
   onPlayToggle: () => void;
   onTranscribe: () => void;
-  onDelete: () => void;
 };
 
 export const RecordingControls = ({
@@ -14,12 +13,15 @@ export const RecordingControls = ({
   isTranscribing,
   onPlayToggle,
   onTranscribe,
-  onDelete,
 }: RecordingControlsProps) => {
   return (
     <div className="flex gap-2">
       <Button variant="outline" size="icon" onClick={onPlayToggle}>
-        {isPlaying ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        {isPlaying ? (
+          <Square className="h-4 w-4" />
+        ) : (
+          <Play className="h-4 w-4" />
+        )}
       </Button>
       <Button
         variant="outline"
@@ -32,9 +34,6 @@ export const RecordingControls = ({
         ) : (
           <MessageSquare className="h-4 w-4" />
         )}
-      </Button>
-      <Button variant="outline" size="icon" onClick={onDelete}>
-        <Trash2 className="h-4 w-4" />
       </Button>
     </div>
   );

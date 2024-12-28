@@ -13,6 +13,7 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 const supabase = createClient(supabaseUrl!, supabaseServiceKey!)
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -56,7 +57,7 @@ serve(async (req) => {
       body: JSON.stringify({
         audio_url: signedUrl,
         language_detection: true,
-        speaker_labels: speakerDetection, // Enable speaker detection if requested
+        speaker_labels: speakerDetection,
       }),
     })
 
@@ -107,7 +108,6 @@ serve(async (req) => {
         const statusData = await statusResponse.json()
         console.log('Received status:', statusData.status)
 
-        // Update transcription record with status and text if completed
         if (statusData.status === 'completed') {
           const { error: updateError } = await supabase
             .from('transcriptions')
@@ -141,7 +141,6 @@ serve(async (req) => {
         }
       } catch (error) {
         console.error('Error in polling:', error)
-        // Update transcription status to error
         await supabase
           .from('transcriptions')
           .update({

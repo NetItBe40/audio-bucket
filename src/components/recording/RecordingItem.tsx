@@ -47,17 +47,18 @@ export const RecordingItem = ({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showTranscribeDialog, setShowTranscribeDialog] = useState(false);
   const [speakerDetection, setSpeakerDetection] = useState(false);
+  const [entityDetection, setEntityDetection] = useState(false);
   const transcription = recording.transcriptions?.[0];
 
   const handleTranscribe = async () => {
     try {
-      // Appeler onTranscribe avant de démarrer la transcription pour mettre à jour l'état
       onTranscribe();
       
       const { error } = await supabase.functions.invoke("transcribe", {
         body: { 
           recordingId: recording.id,
           speakerDetection,
+          entityDetection,
         },
       });
 
@@ -141,15 +142,27 @@ export const RecordingItem = ({
           <DialogHeader>
             <DialogTitle>Options de transcription</DialogTitle>
           </DialogHeader>
-          <div className="flex items-center space-x-2 py-4">
-            <Switch
-              id="speaker-detection"
-              checked={speakerDetection}
-              onCheckedChange={setSpeakerDetection}
-            />
-            <Label htmlFor="speaker-detection">
-              Activer la détection des intervenants
-            </Label>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="speaker-detection"
+                checked={speakerDetection}
+                onCheckedChange={setSpeakerDetection}
+              />
+              <Label htmlFor="speaker-detection">
+                Activer la détection des intervenants
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="entity-detection"
+                checked={entityDetection}
+                onCheckedChange={setEntityDetection}
+              />
+              <Label htmlFor="entity-detection">
+                Activer la détection des entités
+              </Label>
+            </div>
           </div>
           <div className="flex justify-end space-x-2">
             <button

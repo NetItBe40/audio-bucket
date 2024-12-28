@@ -74,6 +74,8 @@ export type Database = {
       transcriptions: {
         Row: {
           created_at: string
+          entities: Json | null
+          entity_detection: boolean | null
           id: string
           language: string | null
           recording_id: string
@@ -85,6 +87,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          entities?: Json | null
+          entity_detection?: boolean | null
           id?: string
           language?: string | null
           recording_id: string
@@ -96,6 +100,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          entities?: Json | null
+          entity_detection?: boolean | null
           id?: string
           language?: string | null
           recording_id?: string

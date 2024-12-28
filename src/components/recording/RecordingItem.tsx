@@ -14,7 +14,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -41,6 +40,7 @@ export const RecordingItem = ({
   isTranscribing,
   onPlayToggle,
   onDelete,
+  onTranscribe,
 }: RecordingItemProps) => {
   const { toast } = useToast();
   const [isTranscriptionVisible, setIsTranscriptionVisible] = useState(false);
@@ -51,6 +51,9 @@ export const RecordingItem = ({
 
   const handleTranscribe = async () => {
     try {
+      // Appeler onTranscribe avant de démarrer la transcription pour mettre à jour l'état
+      onTranscribe();
+      
       const { error } = await supabase.functions.invoke("transcribe", {
         body: { 
           recordingId: recording.id,

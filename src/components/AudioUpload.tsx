@@ -50,6 +50,10 @@ const AudioUpload = () => {
         variant: "destructive",
       });
     }
+    // Réinitialiser la valeur de l'input file pour permettre la sélection du même fichier
+    if (e.target) {
+      e.target.value = '';
+    }
   };
 
   const handleSave = async (title: string) => {
@@ -119,7 +123,10 @@ const AudioUpload = () => {
       </div>
       <SaveDialog
         isOpen={showSaveDialog}
-        onClose={() => setShowSaveDialog(false)}
+        onClose={() => {
+          setShowSaveDialog(false);
+          setCurrentFile(null);
+        }}
         onSave={handleSave}
       />
     </>

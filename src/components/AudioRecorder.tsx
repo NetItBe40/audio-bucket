@@ -41,10 +41,16 @@ const AudioRecorder = () => {
             }, 5000);
 
             audio.addEventListener('loadedmetadata', () => {
-              duration = Math.round(audio.duration);
-              console.log("Audio duration calculated in recorder:", duration);
-              clearTimeout(timeoutId);
-              resolve();
+              const calculatedDuration = Math.round(audio.duration);
+              if (isFinite(calculatedDuration) && calculatedDuration > 0) {
+                duration = calculatedDuration;
+                console.log("Audio duration calculated in recorder:", duration);
+                clearTimeout(timeoutId);
+                resolve();
+              } else {
+                clearTimeout(timeoutId);
+                reject(new Error("Invalid duration calculated"));
+              }
             }, { once: true });
             
             audio.addEventListener('error', (e) => {
@@ -109,6 +115,10 @@ const AudioRecorder = () => {
 
       const blob = await fetch(audioUrl).then((r) => r.blob());
       const fileName = `${user.id}/${Date.now()}.webm`;
+
+      if (!isFinite(audioDuration) || audioDuration <= 0) {
+        throw new Error("Invalid audio duration");
+      }
 
       console.log("Saving audio with duration:", audioDuration);
 

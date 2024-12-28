@@ -1,15 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { RecordingItem } from "./recording/RecordingItem";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { useTranscription } from "@/hooks/useTranscription";
+import { useRecordingDeletion } from "@/hooks/useRecordingDeletion";
+import { useToast } from "@/components/ui/use-toast";
 
 const RecordingsList = () => {
   const { toast } = useToast();
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const [transcribingIds, setTranscribingIds] = useState<Set<string>>(new Set());
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
+  const { playingId, handlePlayToggle } = useAudioPlayer();
   const { data: recordings, isLoading, refetch } = useQuery({
     queryKey: ["recordings"],
     queryFn: async () => {
@@ -38,6 +38,9 @@ const RecordingsList = () => {
     },
   });
 
+  const { transcribingIds, setTranscribingIds, handleTranscribe } = useTranscription(refetch);
+  const { handleDelete } = useRecordingDeletion(refetch);
+
   // Polling pour les transcriptions en cours
   useEffect(() => {
     if (transcribingIds.size === 0) return;
@@ -60,7 +63,6 @@ const RecordingsList = () => {
             return next;
           });
           
-          // Rafraîchir les données et afficher une notification
           refetch();
           completedIds.forEach(() => {
             toast({
@@ -73,112 +75,7 @@ const RecordingsList = () => {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [transcribingIds, refetch, toast]);
-
-  const handleDelete = async (id: string, filePath: string) => {
-    try {
-      if (playingId === id) {
-        audioRef.current?.pause();
-        setPlayingId(null);
-      }
-
-      const { error: storageError } = await supabase.storage
-        .from("audio-recordings")
-        .remove([filePath]);
-
-      if (storageError) throw storageError;
-
-      const { error: dbError } = await supabase
-        .from("recordings")
-        .delete()
-        .eq("id", id);
-
-      if (dbError) throw dbError;
-
-      toast({
-        title: "Succès",
-        description: "Enregistrement supprimé avec succès",
-      });
-
-      refetch();
-    } catch (error) {
-      console.error("Error deleting recording:", error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de supprimer l'enregistrement",
-      });
-    }
-  };
-
-  const handlePlayToggle = async (id: string, filePath: string) => {
-    try {
-      if (playingId === id) {
-        audioRef.current?.pause();
-        setPlayingId(null);
-        return;
-      }
-
-      if (playingId && audioRef.current) {
-        audioRef.current.pause();
-      }
-
-      const { data, error } = await supabase.storage
-        .from("audio-recordings")
-        .createSignedUrl(filePath, 3600);
-
-      if (error) throw error;
-
-      const audio = new Audio(data.signedUrl);
-      audioRef.current = audio;
-
-      audio.play();
-      setPlayingId(id);
-
-      audio.onended = () => {
-        setPlayingId(null);
-      };
-    } catch (error) {
-      console.error("Error playing recording:", error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de lire l'enregistrement",
-      });
-    }
-  };
-
-  const handleTranscribe = async (id: string) => {
-    try {
-      setTranscribingIds((prev) => new Set(prev).add(id));
-
-      const { error } = await supabase.functions.invoke("transcribe", {
-        body: { recordingId: id },
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Succès",
-        description: "La transcription a démarré",
-      });
-
-      refetch();
-    } catch (error) {
-      console.error("Error starting transcription:", error);
-      setTranscribingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de démarrer la transcription",
-      });
-    }
-  };
+  }, [transcribingIds, refetch, toast, setTranscribingIds]);
 
   if (isLoading) {
     return <div className="text-center">Chargement...</div>;

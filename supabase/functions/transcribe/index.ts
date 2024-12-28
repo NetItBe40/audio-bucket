@@ -20,8 +20,9 @@ serve(async (req) => {
 
   try {
     const { recordingId } = await req.json()
+    console.log('Starting transcription for recording:', recordingId)
 
-    // Get the recording file URL
+    // Get the recording file path
     const { data: recording, error: recordingError } = await supabase
       .from('recordings')
       .select('file_path')
@@ -29,8 +30,11 @@ serve(async (req) => {
       .single()
 
     if (recordingError || !recording) {
+      console.error('Error fetching recording:', recordingError)
       throw new Error('Recording not found')
     }
+
+    console.log('Found recording with file path:', recording.file_path)
 
     // Get a signed URL for the audio file
     const { data: { signedUrl }, error: signedUrlError } = await supabase
@@ -39,8 +43,11 @@ serve(async (req) => {
       .createSignedUrl(recording.file_path, 3600)
 
     if (signedUrlError || !signedUrl) {
+      console.error('Error generating signed URL:', signedUrlError)
       throw new Error('Could not generate signed URL')
     }
+
+    console.log('Generated signed URL successfully')
 
     // Create transcription request with AssemblyAI
     const response = await fetch('https://api.assemblyai.com/v2/transcript', {
@@ -56,10 +63,13 @@ serve(async (req) => {
     })
 
     if (!response.ok) {
+      const errorText = await response.text()
+      console.error('AssemblyAI API error:', errorText)
       throw new Error('Failed to create transcription request')
     }
 
     const transcriptionData = await response.json()
+    console.log('Created AssemblyAI transcription:', transcriptionData)
 
     // Store the initial transcription record
     const { error: insertError } = await supabase
@@ -70,37 +80,68 @@ serve(async (req) => {
       })
 
     if (insertError) {
+      console.error('Error creating transcription record:', insertError)
       throw new Error('Failed to create transcription record')
     }
 
+    console.log('Created transcription record successfully')
+
     // Start polling for transcription status
     const pollStatus = async () => {
-      const statusResponse = await fetch(
-        `https://api.assemblyai.com/v2/transcript/${transcriptionData.id}`,
-        {
-          headers: {
-            'Authorization': assemblyAIApiKey!,
-          },
+      try {
+        console.log('Polling transcription status...')
+        const statusResponse = await fetch(
+          `https://api.assemblyai.com/v2/transcript/${transcriptionData.id}`,
+          {
+            headers: {
+              'Authorization': assemblyAIApiKey!,
+            },
+          }
+        )
+
+        if (!statusResponse.ok) {
+          const errorText = await statusResponse.text()
+          console.error('Error polling status:', errorText)
+          throw new Error('Failed to get transcription status')
         }
-      )
 
-      if (!statusResponse.ok) {
-        throw new Error('Failed to get transcription status')
-      }
+        const statusData = await statusResponse.json()
+        console.log('Received status:', statusData.status)
 
-      const statusData = await statusResponse.json()
+        // Update transcription record with status and text if completed
+        if (statusData.status === 'completed') {
+          const { error: updateError } = await supabase
+            .from('transcriptions')
+            .update({
+              status: 'completed',
+              text: statusData.text,
+              language: statusData.language_code,
+            })
+            .eq('recording_id', recordingId)
 
-      // Update transcription record with status and text if completed
-      if (statusData.status === 'completed') {
-        await supabase
-          .from('transcriptions')
-          .update({
-            status: 'completed',
-            text: statusData.text,
-            language: statusData.language_code,
-          })
-          .eq('recording_id', recordingId)
-      } else if (statusData.status === 'error') {
+          if (updateError) {
+            console.error('Error updating transcription:', updateError)
+          } else {
+            console.log('Transcription completed successfully')
+          }
+        } else if (statusData.status === 'error') {
+          const { error: updateError } = await supabase
+            .from('transcriptions')
+            .update({
+              status: 'error',
+            })
+            .eq('recording_id', recordingId)
+
+          if (updateError) {
+            console.error('Error updating transcription status:', updateError)
+          }
+        } else {
+          // Schedule next poll in 5 seconds if still processing
+          setTimeout(pollStatus, 5000)
+        }
+      } catch (error) {
+        console.error('Error in polling:', error)
+        // Update transcription status to error
         await supabase
           .from('transcriptions')
           .update({
@@ -108,8 +149,6 @@ serve(async (req) => {
           })
           .eq('recording_id', recordingId)
       }
-
-      return statusData.status
     }
 
     // Initial poll after 5 seconds

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Play, Square, Trash2, Download } from "lucide-react";
+import { Play, Square, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -27,7 +27,6 @@ const RecordingsList = () => {
 
   const handleDelete = async (id: string, filePath: string) => {
     try {
-      // Si on supprime l'enregistrement en cours de lecture, on l'arrête
       if (playingId === id) {
         audioRef.current?.pause();
         setPlayingId(null);
@@ -64,14 +63,12 @@ const RecordingsList = () => {
 
   const handlePlayToggle = async (id: string, filePath: string) => {
     try {
-      // Si on clique sur l'enregistrement en cours de lecture, on l'arrête
       if (playingId === id) {
         audioRef.current?.pause();
         setPlayingId(null);
         return;
       }
 
-      // Si un autre enregistrement est en cours de lecture, on l'arrête
       if (playingId && audioRef.current) {
         audioRef.current.pause();
       }
@@ -88,7 +85,6 @@ const RecordingsList = () => {
       audio.play();
       setPlayingId(id);
 
-      // Quand l'audio se termine
       audio.onended = () => {
         setPlayingId(null);
       };
@@ -98,36 +94,6 @@ const RecordingsList = () => {
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de lire l'enregistrement",
-      });
-    }
-  };
-
-  const handleDownload = async (filePath: string, title: string) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from("audio-recordings")
-        .createSignedUrl(filePath, 3600);
-
-      if (error) throw error;
-
-      // Créer un lien temporaire et déclencher le téléchargement
-      const link = document.createElement("a");
-      link.href = data.signedUrl;
-      link.download = `${title}.webm`; // Utiliser le titre comme nom de fichier
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      toast({
-        title: "Succès",
-        description: "Le téléchargement a démarré",
-      });
-    } catch (error) {
-      console.error("Error downloading recording:", error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de télécharger l'enregistrement",
       });
     }
   };
@@ -171,13 +137,6 @@ const RecordingsList = () => {
               ) : (
                 <Play className="h-4 w-4" />
               )}
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => handleDownload(recording.file_path, recording.title)}
-            >
-              <Download className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"

@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { SaveDialog } from "./SaveDialog";
+import SaveDialog from "./SaveDialog";
 
 const AudioUpload = () => {
   const [isDragging, setIsDragging] = useState(false);

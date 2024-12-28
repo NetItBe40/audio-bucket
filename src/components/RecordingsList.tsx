@@ -1,15 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Play, Square, Trash2, MessageSquare, Loader } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { TranscriptionDisplay } from "./TranscriptionDisplay";
+import { RecordingControls } from "./RecordingControls";
 
 const RecordingsList = () => {
   const { toast } = useToast();
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [transcribingIds, setTranscribingIds] = useState<Set<string>>(new Set());
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { data: recordings, isLoading, refetch } = useQuery({
@@ -31,6 +32,38 @@ const RecordingsList = () => {
       return data;
     },
   });
+
+  // Polling pour les transcriptions en cours
+  useEffect(() => {
+    if (transcribingIds.size === 0) return;
+
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("transcriptions")
+        .select("recording_id, status")
+        .in(
+          "recording_id",
+          Array.from(transcribingIds)
+        );
+
+      if (data) {
+        const completedIds = data
+          .filter(t => t.status !== "processing")
+          .map(t => t.recording_id);
+
+        if (completedIds.length > 0) {
+          setTranscribingIds(prev => {
+            const next = new Set(prev);
+            completedIds.forEach(id => next.delete(id));
+            return next;
+          });
+          refetch();
+        }
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [transcribingIds, refetch]);
 
   const handleDelete = async (id: string, filePath: string) => {
     try {
@@ -107,6 +140,8 @@ const RecordingsList = () => {
 
   const handleTranscribe = async (id: string) => {
     try {
+      setTranscribingIds(prev => new Set(prev).add(id));
+      
       const { error } = await supabase.functions.invoke("transcribe", {
         body: { recordingId: id },
       });
@@ -121,6 +156,12 @@ const RecordingsList = () => {
       refetch();
     } catch (error) {
       console.error("Error starting transcription:", error);
+      setTranscribingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -162,59 +203,17 @@ const RecordingsList = () => {
                 {formatDuration(recording.duration)} - {format(new Date(recording.created_at), 'dd/MM/yyyy', { locale: fr })}
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => handlePlayToggle(recording.id, recording.file_path)}
-              >
-                {playingId === recording.id ? (
-                  <Square className="h-4 w-4" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => handleTranscribe(recording.id)}
-                disabled={recording.transcriptions?.[0]?.status === "processing"}
-              >
-                {recording.transcriptions?.[0]?.status === "processing" ? (
-                  <Loader className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MessageSquare className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => handleDelete(recording.id, recording.file_path)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
+            <RecordingControls
+              isPlaying={playingId === recording.id}
+              isTranscribing={transcribingIds.has(recording.id)}
+              onPlayToggle={() => handlePlayToggle(recording.id, recording.file_path)}
+              onTranscribe={() => handleTranscribe(recording.id)}
+              onDelete={() => handleDelete(recording.id, recording.file_path)}
+            />
           </div>
 
           {recording.transcriptions?.[0] && (
-            <div className="bg-gray-50 p-3 rounded-md">
-              {recording.transcriptions[0].status === "completed" ? (
-                <>
-                  <p className="text-sm text-gray-600 mb-2">
-                    Transcription ({recording.transcriptions[0].language})
-                  </p>
-                  <p className="text-sm">{recording.transcriptions[0].text}</p>
-                </>
-              ) : recording.transcriptions[0].status === "error" ? (
-                <p className="text-sm text-red-600">
-                  Une erreur est survenue lors de la transcription
-                </p>
-              ) : (
-                <p className="text-sm text-gray-600">
-                  Transcription en cours...
-                </p>
-              )}
-            </div>
+            <TranscriptionDisplay transcription={recording.transcriptions[0]} />
           )}
         </div>
       ))}

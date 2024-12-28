@@ -25,6 +25,8 @@ const RecordingsList = () => {
             language,
             speaker_detection,
             speaker_labels,
+            entity_detection,
+            entities,
             created_at,
             updated_at
           )

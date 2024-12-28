@@ -34,7 +34,10 @@ export const TranscriptionDisplay = ({ transcription }: TranscriptionProps) => {
         )}
 
         {/* Affichage des entités détectées */}
-        {transcription.entity_detection && transcription.entities && (
+        {transcription.entity_detection && transcription.entities && (transcription.entities as Array<{
+          entity_type: string;
+          text: string;
+        }>).length > 0 && (
           <div className="pt-4 border-t border-gray-200">
             <p className="text-sm font-medium text-gray-700 mb-2">
               Entités détectées :

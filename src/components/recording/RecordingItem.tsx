@@ -10,11 +10,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
 import { TranscriptionDisplay } from "../TranscriptionDisplay";
 import { RecordingHeader } from "./RecordingHeader";
-import { TranscriptionActions } from "./TranscriptionActions";
 import { Tables } from "@/integrations/supabase/types";
+import { useToast } from "@/components/ui/use-toast";
 
 type RecordingItemProps = {
   recording: Tables<"recordings"> & {
@@ -35,8 +34,45 @@ export const RecordingItem = ({
   onTranscribe,
   onDelete,
 }: RecordingItemProps) => {
+  const { toast } = useToast();
   const [isTranscriptionVisible, setIsTranscriptionVisible] = useState(true);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const transcription = recording.transcriptions?.[0];
+
+  const handleCopyTranscription = async () => {
+    if (!transcription?.text) return;
+    try {
+      await navigator.clipboard.writeText(transcription.text);
+      toast({
+        title: "Succès",
+        description: "Le texte a été copié dans le presse-papier",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible de copier le texte",
+      });
+    }
+  };
+
+  const handleExportTranscription = () => {
+    if (!transcription?.text) return;
+    const blob = new Blob([transcription.text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${recording.title}-transcription.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDelete = () => {
+    setShowDeleteDialog(false);
+    onDelete();
+  };
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-sm space-y-4">
@@ -46,34 +82,21 @@ export const RecordingItem = ({
         createdAt={recording.created_at}
         isPlaying={isPlaying}
         isTranscribing={isTranscribing}
+        transcription={transcription}
+        isTranscriptionVisible={isTranscriptionVisible}
         onPlayToggle={onPlayToggle}
         onTranscribe={onTranscribe}
-        onDelete={() => {}}
+        onCopyTranscription={handleCopyTranscription}
+        onToggleTranscriptionVisibility={() => setIsTranscriptionVisible(!isTranscriptionVisible)}
+        onExportTranscription={handleExportTranscription}
+        onDelete={() => setShowDeleteDialog(true)}
       />
 
-      {transcription && (
-        <>
-          <TranscriptionActions
-            text={transcription.text || ""}
-            isVisible={isTranscriptionVisible}
-            onToggleVisibility={() => setIsTranscriptionVisible(!isTranscriptionVisible)}
-          />
-          {isTranscriptionVisible && (
-            <TranscriptionDisplay transcription={transcription} />
-          )}
-        </>
+      {transcription && isTranscriptionVisible && (
+        <TranscriptionDisplay transcription={transcription} />
       )}
 
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full text-red-600 hover:text-red-700"
-          >
-            Supprimer l'enregistrement
-          </Button>
-        </AlertDialogTrigger>
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Êtes-vous sûr ?</AlertDialogTitle>
@@ -84,7 +107,7 @@ export const RecordingItem = ({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={onDelete}>
+            <AlertDialogAction onClick={handleDelete}>
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>

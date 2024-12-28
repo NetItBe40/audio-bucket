@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { RecordingControls } from "../RecordingControls";
+import { RecordingControls } from "@/components/RecordingControls";
+import { Tables } from "@/integrations/supabase/types";
 
 type RecordingHeaderProps = {
   title: string;
@@ -8,8 +9,13 @@ type RecordingHeaderProps = {
   createdAt: string;
   isPlaying: boolean;
   isTranscribing: boolean;
+  transcription?: Tables<"transcriptions">;
+  isTranscriptionVisible?: boolean;
   onPlayToggle: () => void;
   onTranscribe: () => void;
+  onCopyTranscription?: () => void;
+  onToggleTranscriptionVisibility?: () => void;
+  onExportTranscription?: () => void;
   onDelete: () => void;
 };
 
@@ -19,8 +25,13 @@ export const RecordingHeader = ({
   createdAt,
   isPlaying,
   isTranscribing,
+  transcription,
+  isTranscriptionVisible,
   onPlayToggle,
   onTranscribe,
+  onCopyTranscription,
+  onToggleTranscriptionVisibility,
+  onExportTranscription,
   onDelete,
 }: RecordingHeaderProps) => {
   const formatDuration = (duration: number | null) => {
@@ -42,8 +53,14 @@ export const RecordingHeader = ({
       <RecordingControls
         isPlaying={isPlaying}
         isTranscribing={isTranscribing}
+        transcription={transcription}
+        isTranscriptionVisible={isTranscriptionVisible}
         onPlayToggle={onPlayToggle}
         onTranscribe={onTranscribe}
+        onCopyTranscription={onCopyTranscription}
+        onToggleTranscriptionVisibility={onToggleTranscriptionVisibility}
+        onExportTranscription={onExportTranscription}
+        onDelete={onDelete}
       />
     </div>
   );

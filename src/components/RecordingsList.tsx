@@ -57,13 +57,21 @@ const RecordingsList = () => {
             completedIds.forEach((id) => next.delete(id));
             return next;
           });
+          
+          // Rafraîchir les données et afficher une notification
           refetch();
+          completedIds.forEach(() => {
+            toast({
+              title: "Transcription terminée",
+              description: "Les informations ont été mises à jour",
+            });
+          });
         }
       }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [transcribingIds, refetch]);
+  }, [transcribingIds, refetch, toast]);
 
   const handleDelete = async (id: string, filePath: string) => {
     try {

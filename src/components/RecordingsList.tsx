@@ -1,13 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Play, Trash2 } from "lucide-react";
+import { Play, Square, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import { useState, useRef } from "react";
 
 const RecordingsList = () => {
   const { toast } = useToast();
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { data: recordings, isLoading, refetch } = useQuery({
     queryKey: ["recordings"],
@@ -24,14 +27,18 @@ const RecordingsList = () => {
 
   const handleDelete = async (id: string, filePath: string) => {
     try {
-      // Supprimer le fichier du storage
+      // Si on supprime l'enregistrement en cours de lecture, on l'arrête
+      if (playingId === id) {
+        audioRef.current?.pause();
+        setPlayingId(null);
+      }
+
       const { error: storageError } = await supabase.storage
         .from("audio-recordings")
         .remove([filePath]);
 
       if (storageError) throw storageError;
 
-      // Supprimer l'enregistrement de la base de données
       const { error: dbError } = await supabase
         .from("recordings")
         .delete()
@@ -55,16 +62,36 @@ const RecordingsList = () => {
     }
   };
 
-  const handlePlay = async (filePath: string) => {
+  const handlePlayToggle = async (id: string, filePath: string) => {
     try {
+      // Si on clique sur l'enregistrement en cours de lecture, on l'arrête
+      if (playingId === id) {
+        audioRef.current?.pause();
+        setPlayingId(null);
+        return;
+      }
+
+      // Si un autre enregistrement est en cours de lecture, on l'arrête
+      if (playingId && audioRef.current) {
+        audioRef.current.pause();
+      }
+
       const { data, error } = await supabase.storage
         .from("audio-recordings")
-        .createSignedUrl(filePath, 3600); // URL valide pendant 1 heure
+        .createSignedUrl(filePath, 3600);
 
       if (error) throw error;
 
       const audio = new Audio(data.signedUrl);
+      audioRef.current = audio;
+      
       audio.play();
+      setPlayingId(id);
+
+      // Quand l'audio se termine
+      audio.onended = () => {
+        setPlayingId(null);
+      };
     } catch (error) {
       console.error("Error playing recording:", error);
       toast({
@@ -107,9 +134,13 @@ const RecordingsList = () => {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => handlePlay(recording.file_path)}
+              onClick={() => handlePlayToggle(recording.id, recording.file_path)}
             >
-              <Play className="h-4 w-4" />
+              {playingId === recording.id ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
             </Button>
             <Button
               variant="outline"

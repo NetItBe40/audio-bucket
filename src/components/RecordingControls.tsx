@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Play, Square, MessageSquare, FileText, Copy, Eye, EyeOff, Download, Trash2, Loader } from "lucide-react";
+import { Play, Square, MessageSquare, FileText, Copy, Eye, EyeOff, Download, Trash2, Loader2 } from "lucide-react";
 import { Tables } from "@/integrations/supabase/types";
 
 type RecordingControlsProps = {
@@ -47,7 +47,7 @@ export const RecordingControls = ({
         disabled={isTranscribing || hasTranscription}
       >
         {isTranscribing ? (
-          <Loader className="h-4 w-4 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : hasTranscription ? (
           <FileText className="h-4 w-4" />
         ) : (

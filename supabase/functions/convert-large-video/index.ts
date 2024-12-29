@@ -1,5 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { FFmpeg } from 'https://esm.sh/@ffmpeg/ffmpeg@0.12.7'
+import { toBlobURL } from 'https://esm.sh/@ffmpeg/util@0.12.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,24 +40,48 @@ serve(async (req) => {
       throw uploadError
     }
 
-    // If this is the last chunk, create a minimal MP3 file
+    // If this is the last chunk, combine all chunks and convert to MP3
     if (chunkIndex === totalChunks - 1) {
       console.log('Processing final chunk, initiating conversion')
       
-      // Create a minimal valid MP3 file
-      const audioFileName = `${userId}/converted-${Date.now()}.mp3`
-      const mp3Header = new Uint8Array([
-        0xFF, 0xFB, 0x90, 0x44, // MPEG 1 Layer 3, 44.1kHz
-        0x00, 0x00, 0x00, 0x00, // Padding
-        0x00, 0x00, 0x00, 0x00  // Frame sync
-      ])
+      // Initialize FFmpeg
+      const ffmpeg = new FFmpeg()
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm`, 'application/wasm')
+      })
+
+      // Combine all chunks into one video file
+      const chunks = []
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkPath = `${userId}/temp-${fileName}-chunk-${i}`
+        const { data: chunkData, error: chunkError } = await supabase.storage
+          .from('temp-uploads')
+          .download(chunkPath)
+        
+        if (chunkError) throw chunkError
+        chunks.push(new Uint8Array(await chunkData.arrayBuffer()))
+      }
+
+      // Combine chunks
+      const combinedVideo = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
+      let offset = 0
+      chunks.forEach(chunk => {
+        combinedVideo.set(chunk, offset)
+        offset += chunk.length
+      })
+
+      // Convert to MP3
+      ffmpeg.writeFile('input.webm', combinedVideo)
+      await ffmpeg.exec(['-i', 'input.webm', '-vn', '-acodec', 'libmp3lame', '-q:a', '2', 'output.mp3'])
+      const mp3Data = await ffmpeg.readFile('output.mp3')
       
       console.log('Uploading converted audio file...')
       
       // Upload the MP3 file to audio-recordings with the user ID in the path
+      const audioFileName = `${userId}/converted-${Date.now()}.mp3`
       const { data: audioData, error: audioUploadError } = await supabase.storage
         .from('audio-recordings')
-        .upload(audioFileName, mp3Header, {
+        .upload(audioFileName, mp3Data, {
           contentType: 'audio/mpeg',
           cacheControl: '3600',
           upsert: false

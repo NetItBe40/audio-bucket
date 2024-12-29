@@ -5,6 +5,9 @@ import { useState } from "react";
 import SaveDialog from "./SaveDialog";
 import DropZone from "./upload/DropZone";
 
+// Taille maximale de fichier acceptée par Supabase (50MB en octets)
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
 const AudioUpload = () => {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
@@ -12,6 +15,14 @@ const AudioUpload = () => {
   const queryClient = useQueryClient();
 
   const handleFileSelect = (file: File) => {
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        title: "Fichier trop volumineux",
+        description: "La taille du fichier ne doit pas dépasser 50MB.",
+        variant: "destructive",
+      });
+      return;
+    }
     setCurrentFile(file);
     setShowSaveDialog(true);
   };

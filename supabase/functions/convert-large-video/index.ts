@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { FFmpeg } from "https://esm.sh/@ffmpeg/ffmpeg@0.12.7"
-import { fetchFile, toBlobURL } from "https://esm.sh/@ffmpeg/util@0.12.1"
+import { FFmpeg } from "https://esm.sh/@ffmpeg/ffmpeg@0.11.0"
+import { toBlobURL } from "https://esm.sh/@ffmpeg/util@0.11.0"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,10 +62,10 @@ serve(async (req) => {
       const ffmpeg = new FFmpeg()
       console.log('Loading FFmpeg...')
       
-      // Configure FFmpeg without worker
+      // Configure FFmpeg for Deno environment
       await ffmpeg.load({
-        coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
-        wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+        coreURL: await toBlobURL(`https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js`, 'application/javascript'),
+        wasmURL: await toBlobURL(`https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.wasm`, 'application/wasm'),
       })
       
       console.log('FFmpeg loaded successfully')

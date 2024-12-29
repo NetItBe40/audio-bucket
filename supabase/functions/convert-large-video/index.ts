@@ -47,7 +47,7 @@ serve(async (req) => {
       .from('temp-uploads')
       .upload(tempFileName, bytes, {
         contentType: 'application/octet-stream',
-        upsert: true // Allow overwriting for retry scenarios
+        upsert: true
       })
 
     if (uploadError) {
@@ -62,10 +62,10 @@ serve(async (req) => {
       const ffmpeg = new FFmpeg()
       console.log('Loading FFmpeg...')
       
+      // Configure FFmpeg without worker
       await ffmpeg.load({
         coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
         wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
-        workerURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.worker.js', 'application/javascript')
       })
       
       console.log('FFmpeg loaded successfully')

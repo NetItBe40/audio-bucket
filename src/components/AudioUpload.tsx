@@ -1,150 +1,152 @@
+import { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import SaveDialog from "./SaveDialog";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import DropZone from "./upload/DropZone";
+import { useQueryClient } from "@tanstack/react-query";
 
-// Taille maximale de fichier acceptée par Supabase (50MB en octets)
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB in bytes
 
 const AudioUpload = () => {
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [currentFile, setCurrentFile] = useState<File | null>(null);
-  const [isConverting, setIsConverting] = useState(false);
   const { toast } = useToast();
+  const [isUploading, setIsUploading] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
   const queryClient = useQueryClient();
 
   const handleFileSelect = async (file: File) => {
-    // Si c'est un fichier audio, on vérifie juste la taille
-    if (file.type.startsWith('audio/')) {
-      if (file.size > MAX_FILE_SIZE) {
+    if (file.size > MAX_FILE_SIZE) {
+      if (file.type.startsWith('video/')) {
+        // Si c'est une vidéo, on propose la conversion
+        handleVideoConversion(file);
+      } else {
         toast({
           title: "Fichier trop volumineux",
-          description: "La taille du fichier ne doit pas dépasser 50MB.",
+          description: "La taille maximale autorisée est de 50MB",
           variant: "destructive",
         });
-        return;
-      }
-      setCurrentFile(file);
-      setShowSaveDialog(true);
-      return;
-    }
-
-    // Si c'est une vidéo et qu'elle dépasse 50MB, on la convertit
-    if (file.type.startsWith('video/') && file.size > MAX_FILE_SIZE) {
-      try {
-        setIsConverting(true);
-        toast({
-          title: "Conversion en cours",
-          description: "La vidéo est en cours de conversion en fichier audio...",
-        });
-
-        // Créer une URL signée temporaire pour le fichier
-        const { data: signedUrl } = await supabase.storage
-          .from('temp-uploads')
-          .createSignedUrl(`temp_${Date.now()}`, 3600);
-
-        if (!signedUrl?.signedUrl) throw new Error("Impossible de créer l'URL signée");
-
-        // Appeler la fonction de conversion
-        const response = await supabase.functions.invoke('convert-video', {
-          body: { videoUrl: signedUrl.signedUrl }
-        });
-
-        if (!response.data?.success) {
-          throw new Error("Échec de la conversion");
-        }
-
-        toast({
-          title: "Conversion réussie",
-          description: "La vidéo a été convertie en fichier audio avec succès.",
-        });
-
-        // Créer un nouveau File object pour l'audio converti
-        const audioResponse = await fetch(response.data.audioPath);
-        const audioBlob = await audioResponse.blob();
-        const audioFile = new File([audioBlob], `converted_${file.name}.mp3`, {
-          type: 'audio/mp3'
-        });
-
-        setCurrentFile(audioFile);
-        setShowSaveDialog(true);
-
-      } catch (error) {
-        console.error('Error converting video:', error);
-        toast({
-          title: "Erreur de conversion",
-          description: "Impossible de convertir la vidéo en audio. Veuillez réessayer.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsConverting(false);
       }
       return;
     }
 
-    setCurrentFile(file);
-    setShowSaveDialog(true);
+    await uploadFile(file);
   };
 
-  const handleSave = async (title: string) => {
-    if (!currentFile) return;
+  const handleVideoConversion = async (file: File) => {
+    setIsConverting(true);
+    toast({
+      title: "Conversion en cours",
+      description: "La vidéo est en cours de conversion en fichier audio...",
+    });
 
     try {
-      const user = (await supabase.auth.getUser()).data.user;
-      if (!user) throw new Error("User not authenticated");
-
-      const fileName = `${user.id}/${Date.now()}.${currentFile.name.split('.').pop()}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("audio-recordings")
-        .upload(fileName, currentFile);
+      // Upload to temp bucket first
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('temp-uploads')
+        .upload(`temp-${Date.now()}-${file.name}`, file);
 
       if (uploadError) throw uploadError;
 
-      const { error: insertError } = await supabase.from("recordings").insert({
-        title,
-        file_path: fileName,
-        file_size: currentFile.size,
-        duration: 0,
-        user_id: user.id,
+      // Call the conversion function
+      const response = await fetch('/api/convert-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          filePath: uploadData.path,
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error('Conversion failed');
+      }
+
+      const { audioPath } = await response.json();
+
+      // Download the converted audio file
+      const { data: audioData, error: downloadError } = await supabase.storage
+        .from('audio-recordings')
+        .download(audioPath);
+
+      if (downloadError) throw downloadError;
+
+      // Create a new file from the audio data
+      const audioFile = new File([audioData], audioPath.split('/').pop() || 'converted-audio.mp3', {
+        type: 'audio/mpeg',
+      });
+
+      // Upload the audio file
+      await uploadFile(audioFile);
+
+      toast({
+        title: "Conversion réussie",
+        description: "La vidéo a été convertie en audio avec succès",
+      });
+    } catch (error) {
+      console.error('Conversion error:', error);
+      toast({
+        title: "Erreur de conversion",
+        description: "Une erreur est survenue lors de la conversion de la vidéo",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    setIsUploading(true);
+    const fileName = `${Date.now()}-${file.name}`;
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('audio-recordings')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { error: insertError } = await supabase
+        .from('recordings')
+        .insert({
+          title: file.name,
+          file_path: fileName,
+          file_size: file.size,
+          duration: null, // Will be updated later
+        });
 
       if (insertError) throw insertError;
 
-      queryClient.invalidateQueries({ queryKey: ["recordings"] });
-      setShowSaveDialog(false);
-      setCurrentFile(null);
+      queryClient.invalidateQueries({ queryKey: ['recordings'] });
+
       toast({
-        title: "Succès",
-        description: "Le fichier a été importé avec succès.",
+        title: "Upload réussi",
+        description: "Le fichier a été uploadé avec succès",
       });
     } catch (error) {
-      console.error("Error saving file:", error);
+      console.error('Upload error:', error);
       toast({
-        title: "Erreur",
-        description: "Une erreur est survenue lors de l'importation.",
+        title: "Erreur d'upload",
+        description: "Une erreur est survenue lors de l'upload du fichier",
         variant: "destructive",
       });
+    } finally {
+      setIsUploading(false);
     }
   };
 
   return (
-    <>
+    <Card className="p-4">
       <DropZone 
         onFileSelect={handleFileSelect} 
-        disabled={isConverting}
+        disabled={isUploading || isConverting}
       />
-      <SaveDialog
-        isOpen={showSaveDialog}
-        onClose={() => {
-          setShowSaveDialog(false);
-          setCurrentFile(null);
-        }}
-        onSave={handleSave}
-      />
-    </>
+      {(isUploading || isConverting) && (
+        <div className="mt-4 text-center text-sm text-gray-500">
+          {isConverting ? "Conversion en cours..." : "Upload en cours..."}
+        </div>
+      )}
+    </Card>
   );
 };
 

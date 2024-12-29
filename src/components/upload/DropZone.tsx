@@ -4,14 +4,14 @@ import { Upload } from "lucide-react";
 
 // Liste des formats de fichiers acceptés
 const ACCEPTED_AUDIO_FORMATS = [
-  ".3ga", ".8svx", ".aac", ".ac3", ".aif", ".aiff", ".alac", ".amr", 
-  ".ape", ".au", ".dss", ".flac", ".flv", ".m4a", ".m4b", ".m4p", 
-  ".m4r", ".mp3", ".mpga", ".ogg", ".oga", ".mogg", ".opus", ".qcp", 
+  ".3ga", ".8svx", ".aac", ".ac3", ".aif", ".aiff", ".alac", ".amr",
+  ".ape", ".au", ".dss", ".flac", ".flv", ".m4a", ".m4b", ".m4p",
+  ".m4r", ".mp3", ".mpga", ".ogg", ".oga", ".mogg", ".opus", ".qcp",
   ".tta", ".voc", ".wav", ".wma", ".wv"
 ];
 
 const ACCEPTED_VIDEO_FORMATS = [
-  ".webm", ".mts", ".m2ts", ".ts", ".mov", ".mp2", ".mp4", ".m4p", 
+  ".webm", ".mts", ".m2ts", ".ts", ".mov", ".mp2", ".mp4", ".m4p",
   ".m4v", ".mxf"
 ];
 
@@ -21,20 +21,17 @@ const ACCEPTED_FORMATS = {
   'video/*': ACCEPTED_VIDEO_FORMATS
 };
 
-type DropZoneProps = {
+interface DropZoneProps {
   onFileSelect: (file: File) => void;
   disabled?: boolean;
-};
+}
 
 const DropZone = ({ onFileSelect, disabled = false }: DropZoneProps) => {
-  const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      if (acceptedFiles.length > 0) {
-        onFileSelect(acceptedFiles[0]);
-      }
-    },
-    [onFileSelect]
-  );
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles.length > 0) {
+      onFileSelect(acceptedFiles[0]);
+    }
+  }, [onFileSelect]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -53,15 +50,15 @@ const DropZone = ({ onFileSelect, disabled = false }: DropZoneProps) => {
     >
       <input {...getInputProps()} />
       <Upload className="w-10 h-10 mx-auto mb-4 text-gray-400" />
+      
       {isDragActive ? (
         <p className="text-sm text-gray-600">Déposez le fichier ici...</p>
       ) : (
         <div className="space-y-2">
           <p className="text-sm text-gray-600">
             {disabled 
-              ? "Conversion en cours..."
-              : "Glissez-déposez un fichier audio ou vidéo, ou cliquez pour sélectionner"
-            }
+              ? "Traitement en cours..."
+              : "Glissez-déposez un fichier audio ou vidéo, ou cliquez pour sélectionner"}
           </p>
           <p className="text-xs text-gray-500">
             Formats acceptés : {ACCEPTED_AUDIO_FORMATS.join(", ")}, {ACCEPTED_VIDEO_FORMATS.join(", ")}

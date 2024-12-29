@@ -41,7 +41,9 @@ export const RecordingItem = ({
   } = useTranscriptionDialog(recording.id, onTranscribe);
 
   const { handleCopyTranscription, handleExportTranscription } = useTranscriptionActions(
-    transcription?.text
+    transcription?.text,
+    transcription,
+    recording.title
   );
 
   const handleDelete = () => {

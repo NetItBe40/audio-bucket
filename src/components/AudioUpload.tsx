@@ -6,6 +6,7 @@ import DropZone from "./upload/DropZone";
 import { useQueryClient } from "@tanstack/react-query";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB in bytes
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
 
 const AudioUpload = () => {
   const { toast } = useToast();
@@ -16,8 +17,7 @@ const AudioUpload = () => {
   const handleFileSelect = async (file: File) => {
     if (file.size > MAX_FILE_SIZE) {
       if (file.type.startsWith('video/')) {
-        // Si c'est une vidéo, on propose la conversion
-        handleVideoConversion(file);
+        handleLargeVideoConversion(file);
       } else {
         toast({
           title: "Fichier trop volumineux",
@@ -31,7 +31,7 @@ const AudioUpload = () => {
     await uploadFile(file);
   };
 
-  const handleVideoConversion = async (file: File) => {
+  const handleLargeVideoConversion = async (file: File) => {
     setIsConverting(true);
     toast({
       title: "Conversion en cours",
@@ -43,44 +43,62 @@ const AudioUpload = () => {
       if (userError) throw userError;
       if (!userData.user) throw new Error("User not authenticated");
 
-      // Upload to temp bucket first
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('temp-uploads')
-        .upload(`temp-${Date.now()}-${file.name}`, file);
+      // Split file into chunks
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+        
+        // Convert chunk to base64
+        const base64Chunk = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64 = reader.result as string;
+            resolve(base64.split(',')[1]); // Remove data URL prefix
+          };
+          reader.readAsDataURL(chunk);
+        });
 
-      if (uploadError) throw uploadError;
+        // Upload chunk
+        const response = await fetch('/api/convert-large-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            videoChunk: base64Chunk,
+            fileName: file.name,
+            chunkIndex: i,
+            totalChunks,
+          }),
+        });
 
-      // Call the conversion function
-      const response = await fetch('/api/convert-video', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          filePath: uploadData.path,
-        }),
-      });
+        if (!response.ok) {
+          throw new Error('Chunk upload failed');
+        }
 
-      if (!response.ok) {
-        throw new Error('Conversion failed');
+        const data = await response.json();
+        
+        // If this was the last chunk and we got back an audio path
+        if (i === totalChunks - 1 && data.audioPath) {
+          // Download the converted audio file
+          const { data: audioData, error: downloadError } = await supabase.storage
+            .from('audio-recordings')
+            .download(data.audioPath);
+
+          if (downloadError) throw downloadError;
+
+          // Create a new file from the audio data
+          const audioFile = new File([audioData], data.audioPath.split('/').pop() || 'converted-audio.mp3', {
+            type: 'audio/mpeg',
+          });
+
+          // Upload the audio file
+          await uploadFile(audioFile);
+        }
       }
-
-      const { audioPath } = await response.json();
-
-      // Download the converted audio file
-      const { data: audioData, error: downloadError } = await supabase.storage
-        .from('audio-recordings')
-        .download(audioPath);
-
-      if (downloadError) throw downloadError;
-
-      // Create a new file from the audio data
-      const audioFile = new File([audioData], audioPath.split('/').pop() || 'converted-audio.mp3', {
-        type: 'audio/mpeg',
-      });
-
-      // Upload the audio file
-      await uploadFile(audioFile);
 
       toast({
         title: "Conversion réussie",

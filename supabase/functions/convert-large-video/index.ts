@@ -6,11 +6,19 @@ import { fetchFile, toBlobURL } from 'https://esm.sh/@ffmpeg/util@0.12.1'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, {
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Max-Age': '86400',
+      }
+    })
   }
 
   try {
@@ -35,6 +43,8 @@ serve(async (req) => {
     const randomString = Math.random().toString(36).substring(7)
     const tempFileName = `${userId}/temp-${timestamp}-${randomString}-chunk-${chunkIndex}`
 
+    console.log(`Uploading chunk to temporary storage: ${tempFileName}`)
+
     // Upload chunk to temporary storage
     const { error: uploadError } = await supabase.storage
       .from('temp-uploads')
@@ -43,6 +53,7 @@ serve(async (req) => {
       })
 
     if (uploadError) {
+      console.error('Error uploading chunk:', uploadError)
       throw uploadError
     }
 
@@ -51,26 +62,31 @@ serve(async (req) => {
       console.log('Processing final chunk, initiating conversion')
       
       // Initialize FFmpeg with proper configuration
-      const ffmpeg = new FFmpeg();
-      console.log('Loading FFmpeg...');
+      const ffmpeg = new FFmpeg()
+      console.log('Loading FFmpeg...')
       
       await ffmpeg.load({
         coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
         wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
         workerURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.worker.js', 'application/javascript')
-      });
+      })
       
-      console.log('FFmpeg loaded successfully');
+      console.log('FFmpeg loaded successfully')
 
       // Combine all chunks into one video file
+      console.log('Combining video chunks...')
       const chunks = []
       for (let i = 0; i < totalChunks; i++) {
         const chunkPath = `${userId}/temp-${timestamp}-${randomString}-chunk-${i}`
+        console.log(`Downloading chunk: ${chunkPath}`)
         const { data: chunkData, error: chunkError } = await supabase.storage
           .from('temp-uploads')
           .download(chunkPath)
         
-        if (chunkError) throw chunkError
+        if (chunkError) {
+          console.error('Error downloading chunk:', chunkError)
+          throw chunkError
+        }
         chunks.push(new Uint8Array(await chunkData.arrayBuffer()))
       }
 
@@ -82,14 +98,14 @@ serve(async (req) => {
         offset += chunk.length
       })
 
-      console.log('Combined video chunks, starting conversion...');
+      console.log('Combined video chunks, starting conversion...')
 
       // Convert to MP3
       await ffmpeg.writeFile('input.webm', combinedVideo)
       await ffmpeg.exec(['-i', 'input.webm', '-vn', '-acodec', 'libmp3lame', '-q:a', '2', 'output.mp3'])
       const mp3Data = await ffmpeg.readFile('output.mp3')
       
-      console.log('Conversion completed, uploading result...');
+      console.log('Conversion completed, uploading result...')
       
       // Generate unique audio file name
       const audioFileName = `${userId}/converted-${timestamp}-${randomString}.mp3`
@@ -102,12 +118,14 @@ serve(async (req) => {
         })
 
       if (audioUploadError) {
+        console.error('Error uploading converted audio:', audioUploadError)
         throw audioUploadError
       }
 
       console.log('Successfully uploaded converted audio:', audioFileName)
 
       // Clean up temporary chunks
+      console.log('Cleaning up temporary chunks...')
       for (let i = 0; i < totalChunks; i++) {
         const tempChunkName = `${userId}/temp-${timestamp}-${randomString}-chunk-${i}`
         await supabase.storage

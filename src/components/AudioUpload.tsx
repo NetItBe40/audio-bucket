@@ -6,7 +6,7 @@ import DropZone from "./upload/DropZone";
 import { useQueryClient } from "@tanstack/react-query";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB in bytes
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+const CHUNK_SIZE = 1 * 1024 * 1024; // Reduced to 1MB chunks for better reliability
 
 const AudioUpload = () => {
   const { toast } = useToast();
@@ -43,27 +43,28 @@ const AudioUpload = () => {
       if (userError) throw userError;
       if (!userData.user) throw new Error("User not authenticated");
 
-      // Split file into chunks
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
       const timestamp = Date.now();
       const randomString = Math.random().toString(36).substring(7);
+      
+      console.log(`Starting conversion of ${file.name} in ${totalChunks} chunks`);
       
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
         const chunk = file.slice(start, end);
         
-        // Convert chunk to base64
+        console.log(`Processing chunk ${i + 1}/${totalChunks}, size: ${chunk.size} bytes`);
+        
         const base64Chunk = await new Promise((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => {
             const base64 = reader.result as string;
-            resolve(base64.split(',')[1]); // Remove data URL prefix
+            resolve(base64.split(',')[1]);
           };
           reader.readAsDataURL(chunk);
         });
 
-        // Upload chunk using Supabase Edge Function
         const { data, error } = await supabase.functions.invoke('convert-large-video', {
           body: JSON.stringify({
             videoChunk: base64Chunk,
@@ -74,23 +75,24 @@ const AudioUpload = () => {
           }),
         });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error processing chunk:', error);
+          throw error;
+        }
         
-        // If this was the last chunk and we got back an audio path
+        console.log(`Chunk ${i + 1}/${totalChunks} processed successfully`);
+        
         if (i === totalChunks - 1 && data.audioPath) {
-          // Download the converted audio file
           const { data: audioData, error: downloadError } = await supabase.storage
             .from('audio-recordings')
             .download(data.audioPath);
 
           if (downloadError) throw downloadError;
 
-          // Create a new file from the audio data
           const audioFile = new File([audioData], data.audioPath.split('/').pop() || 'converted-audio.mp3', {
             type: 'audio/mpeg',
           });
 
-          // Upload the audio file
           await uploadFile(audioFile);
         }
       }

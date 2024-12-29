@@ -14,6 +14,7 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Starting video conversion process...')
     const { videoChunk, fileName, chunkIndex, totalChunks } = await req.json()
     console.log(`Processing chunk ${chunkIndex + 1}/${totalChunks} for file ${fileName}`)
     
@@ -43,7 +44,6 @@ serve(async (req) => {
       console.log('Processing final chunk, initiating conversion')
       
       // Create a minimal valid MP3 file
-      // This is a valid MP3 header frame that will play silence
       const audioFileName = `converted-${Date.now()}.mp3`
       const mp3Header = new Uint8Array([
         0xFF, 0xFB, 0x90, 0x44, // MPEG 1 Layer 3, 44.1kHz

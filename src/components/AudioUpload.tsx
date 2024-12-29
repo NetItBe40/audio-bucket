@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import DropZone from "./upload/DropZone";
 import { useQueryClient } from "@tanstack/react-query";
@@ -40,6 +39,10 @@ const AudioUpload = () => {
     });
 
     try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!userData.user) throw new Error("User not authenticated");
+
       // Upload to temp bucket first
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('temp-uploads')
@@ -100,6 +103,10 @@ const AudioUpload = () => {
     const fileName = `${Date.now()}-${file.name}`;
 
     try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!userData.user) throw new Error("User not authenticated");
+
       const { error: uploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(fileName, file);
@@ -112,7 +119,8 @@ const AudioUpload = () => {
           title: file.name,
           file_path: fileName,
           file_size: file.size,
-          duration: null, // Will be updated later
+          duration: null,
+          user_id: userData.user.id,
         });
 
       if (insertError) throw insertError;

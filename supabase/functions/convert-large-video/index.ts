@@ -58,84 +58,87 @@ serve(async (req) => {
     if (chunkIndex === totalChunks - 1) {
       console.log('Processing final chunk, initiating conversion')
       
-      const ffmpeg = new FFmpeg()
-      console.log('Loading FFmpeg...')
-      
-      // Configure FFmpeg with minimal configuration
-      await ffmpeg.load()
-      
-      console.log('FFmpeg loaded successfully')
+      try {
+        const ffmpeg = new FFmpeg()
+        console.log('Loading FFmpeg...')
+        
+        await ffmpeg.load()
+        console.log('FFmpeg loaded successfully')
 
-      // Combine all chunks
-      console.log('Combining video chunks...')
-      const chunks = []
-      for (let i = 0; i < totalChunks; i++) {
-        const chunkPath = `${userId}/temp-${timestamp}-${randomString}-chunk-${i}`
-        console.log(`Downloading chunk: ${chunkPath}`)
-        
-        const { data: chunkData, error: chunkError } = await supabase.storage
-          .from('temp-uploads')
-          .download(chunkPath)
-        
-        if (chunkError) {
-          console.error('Error downloading chunk:', chunkError)
-          throw chunkError
+        // Combine all chunks
+        console.log('Combining video chunks...')
+        const chunks = []
+        for (let i = 0; i < totalChunks; i++) {
+          const chunkPath = `${userId}/temp-${timestamp}-${randomString}-chunk-${i}`
+          console.log(`Downloading chunk: ${chunkPath}`)
+          
+          const { data: chunkData, error: chunkError } = await supabase.storage
+            .from('temp-uploads')
+            .download(chunkPath)
+          
+          if (chunkError) {
+            console.error('Error downloading chunk:', chunkError)
+            throw chunkError
+          }
+          
+          chunks.push(new Uint8Array(await chunkData.arrayBuffer()))
         }
-        
-        chunks.push(new Uint8Array(await chunkData.arrayBuffer()))
-      }
 
-      const combinedVideo = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
-      let offset = 0
-      chunks.forEach(chunk => {
-        combinedVideo.set(chunk, offset)
-        offset += chunk.length
-      })
-
-      console.log('Combined video chunks, starting conversion...')
-
-      await ffmpeg.writeFile('input.webm', combinedVideo)
-      await ffmpeg.exec(['-i', 'input.webm', '-vn', '-acodec', 'libmp3lame', '-q:a', '2', 'output.mp3'])
-      const mp3Data = await ffmpeg.readFile('output.mp3')
-      
-      console.log('Conversion completed, uploading result...')
-      
-      const audioFileName = `${userId}/converted-${timestamp}-${randomString}.mp3`
-      const { error: audioUploadError } = await supabase.storage
-        .from('audio-recordings')
-        .upload(audioFileName, mp3Data, {
-          contentType: 'audio/mpeg',
-          upsert: true
+        const combinedVideo = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
+        let offset = 0
+        chunks.forEach(chunk => {
+          combinedVideo.set(chunk, offset)
+          offset += chunk.length
         })
 
-      if (audioUploadError) {
-        console.error('Error uploading converted audio:', audioUploadError)
-        throw audioUploadError
-      }
+        console.log('Combined video chunks, starting conversion...')
 
-      console.log('Successfully uploaded converted audio:', audioFileName)
+        await ffmpeg.writeFile('input.webm', combinedVideo)
+        await ffmpeg.exec(['-i', 'input.webm', '-vn', '-acodec', 'libmp3lame', '-q:a', '2', 'output.mp3'])
+        const mp3Data = await ffmpeg.readFile('output.mp3')
+        
+        console.log('Conversion completed, uploading result...')
+        
+        const audioFileName = `${userId}/converted-${timestamp}-${randomString}.mp3`
+        const { error: audioUploadError } = await supabase.storage
+          .from('audio-recordings')
+          .upload(audioFileName, mp3Data, {
+            contentType: 'audio/mpeg',
+            upsert: true
+          })
 
-      // Clean up temporary chunks
-      console.log('Cleaning up temporary chunks...')
-      for (let i = 0; i < totalChunks; i++) {
-        const tempChunkName = `${userId}/temp-${timestamp}-${randomString}-chunk-${i}`
-        await supabase.storage
-          .from('temp-uploads')
-          .remove([tempChunkName])
-      }
-
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          audioPath: audioFileName
-        }),
-        { 
-          headers: { 
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          } 
+        if (audioUploadError) {
+          console.error('Error uploading converted audio:', audioUploadError)
+          throw audioUploadError
         }
-      )
+
+        console.log('Successfully uploaded converted audio:', audioFileName)
+
+        // Clean up temporary chunks
+        console.log('Cleaning up temporary chunks...')
+        for (let i = 0; i < totalChunks; i++) {
+          const tempChunkName = `${userId}/temp-${timestamp}-${randomString}-chunk-${i}`
+          await supabase.storage
+            .from('temp-uploads')
+            .remove([tempChunkName])
+        }
+
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            audioPath: audioFileName
+          }),
+          { 
+            headers: { 
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            } 
+          }
+        )
+      } catch (ffmpegError) {
+        console.error('FFmpeg error:', ffmpegError)
+        throw new Error(`FFmpeg error: ${ffmpegError.message}`)
+      }
     }
 
     return new Response(

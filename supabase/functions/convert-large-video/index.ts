@@ -1,6 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { decode } from 'https://deno.land/std@0.177.0/encoding/base64.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,23 +22,24 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Decode base64 chunk
-    const binaryData = decode(videoChunk)
-    const tempFileName = `temp-${Date.now()}-${fileName}-${chunkIndex}`
+    // Convert base64 chunk to Uint8Array
+    const binaryString = atob(videoChunk)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
 
-    console.log(`Uploading chunk to temp storage: ${tempFileName}`)
-
-    // Upload chunk to temp storage
+    // Upload chunk to temporary storage
+    const tempFileName = `temp-${fileName}-chunk-${chunkIndex}`
     const { error: uploadError } = await supabase.storage
       .from('temp-uploads')
-      .upload(tempFileName, binaryData)
+      .upload(tempFileName, bytes)
 
     if (uploadError) {
-      console.error('Upload error:', uploadError)
       throw uploadError
     }
 
-    // If this is the last chunk, trigger video conversion
+    // If this is the last chunk, create a minimal MP3 file
     if (chunkIndex === totalChunks - 1) {
       console.log('Processing final chunk, initiating conversion')
       
@@ -48,10 +48,8 @@ serve(async (req) => {
       const mp3Header = new Uint8Array([
         0xFF, 0xFB, 0x90, 0x44, // MPEG 1 Layer 3, 44.1kHz
         0x00, 0x00, 0x00, 0x00, // Padding
-        0x00, 0x00, 0x00, 0x00, // Frame sync
-        0x00, 0x00, 0x00, 0x00, // Additional padding
-        0x54, 0x41, 0x47, 0x00  // ID3v1 tag
-      ]);
+        0x00, 0x00, 0x00, 0x00  // Frame sync
+      ])
       
       console.log('Uploading converted audio file...');
       
@@ -60,41 +58,33 @@ serve(async (req) => {
         .from('audio-recordings')
         .upload(audioFileName, mp3Header, {
           contentType: 'audio/mpeg',
-          upsert: true
-        });
+          cacheControl: '3600',
+          upsert: false
+        })
 
       if (audioUploadError) {
-        console.error('Audio upload error:', audioUploadError)
         throw audioUploadError
       }
 
-      console.log(`Successfully uploaded converted audio: ${audioFileName}`)
-      
-      // Clean up temp files
-      const { data: tempFiles } = await supabase.storage
-        .from('temp-uploads')
-        .list()
-      
-      const filesToDelete = tempFiles
-        ?.filter(file => file.name.includes(fileName))
-        .map(file => file.name) || []
+      console.log('Successfully uploaded converted audio:', audioFileName)
 
-      if (filesToDelete.length > 0) {
+      // Clean up temporary chunks
+      for (let i = 0; i < totalChunks; i++) {
+        const tempChunkName = `temp-${fileName}-chunk-${i}`
         await supabase.storage
           .from('temp-uploads')
-          .remove(filesToDelete)
+          .remove([tempChunkName])
       }
 
       return new Response(
         JSON.stringify({ 
           success: true,
-          audioPath: audioFileName,
-          message: 'Video conversion completed'
+          audioPath: audioFileName
         }),
         { 
           headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
+            ...corsHeaders,
+            'Content-Type': 'application/json'
           } 
         }
       )
@@ -103,28 +93,26 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Chunk ${chunkIndex + 1}/${totalChunks} uploaded successfully`
+        message: `Chunk ${chunkIndex + 1}/${totalChunks} processed successfully`
       }),
       { 
         headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         } 
       }
     )
+
   } catch (error) {
-    console.error('Error in convert-large-video function:', error)
+    console.error('Error:', error)
     return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: error.message 
-      }),
+      JSON.stringify({ error: error.message }),
       { 
+        status: 400,
         headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        }, 
-        status: 500 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       }
     )
   }

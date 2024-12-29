@@ -7,7 +7,6 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -29,8 +28,8 @@ serve(async (req) => {
       bytes[i] = binaryString.charCodeAt(i)
     }
 
-    // Upload chunk to temporary storage
-    const tempFileName = `temp-${fileName}-chunk-${chunkIndex}`
+    // Upload chunk to temporary storage with user ID in path
+    const tempFileName = `${userId}/temp-${fileName}-chunk-${chunkIndex}`
     const { error: uploadError } = await supabase.storage
       .from('temp-uploads')
       .upload(tempFileName, bytes)
@@ -51,7 +50,7 @@ serve(async (req) => {
         0x00, 0x00, 0x00, 0x00  // Frame sync
       ])
       
-      console.log('Uploading converted audio file...');
+      console.log('Uploading converted audio file...')
       
       // Upload the MP3 file to audio-recordings with the user ID in the path
       const { data: audioData, error: audioUploadError } = await supabase.storage
@@ -70,7 +69,7 @@ serve(async (req) => {
 
       // Clean up temporary chunks
       for (let i = 0; i < totalChunks; i++) {
-        const tempChunkName = `temp-${fileName}-chunk-${i}`
+        const tempChunkName = `${userId}/temp-${fileName}-chunk-${i}`
         await supabase.storage
           .from('temp-uploads')
           .remove([tempChunkName])

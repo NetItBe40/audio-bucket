@@ -68,7 +68,7 @@ const AudioUpload = () => {
             fileName: file.name,
             chunkIndex: i,
             totalChunks,
-            userId: userData.user.id, // Add user ID to the request
+            userId: userData.user.id,
           }),
         });
 
@@ -111,12 +111,13 @@ const AudioUpload = () => {
 
   const uploadFile = async (file: File) => {
     setIsUploading(true);
-    const fileName = `${Date.now()}-${file.name}`;
 
     try {
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!userData.user) throw new Error("User not authenticated");
+
+      const fileName = `${userData.user.id}/${Date.now()}-${file.name}`;
 
       const { error: uploadError } = await supabase.storage
         .from('audio-recordings')

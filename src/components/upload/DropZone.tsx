@@ -23,9 +23,10 @@ const ACCEPTED_FORMATS = {
 
 type DropZoneProps = {
   onFileSelect: (file: File) => void;
+  disabled?: boolean;
 };
 
-const DropZone = ({ onFileSelect }: DropZoneProps) => {
+const DropZone = ({ onFileSelect, disabled = false }: DropZoneProps) => {
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
@@ -40,17 +41,15 @@ const DropZone = ({ onFileSelect }: DropZoneProps) => {
     accept: ACCEPTED_FORMATS,
     maxFiles: 1,
     multiple: false,
+    disabled
   });
 
   return (
     <div
       {...getRootProps()}
-      className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
-        ${
-          isDragActive
-            ? "border-primary bg-primary/10"
-            : "border-gray-300 hover:border-primary"
-        }`}
+      className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors
+        ${isDragActive ? "border-primary bg-primary/10" : "border-gray-300 hover:border-primary"}
+        ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
     >
       <input {...getInputProps()} />
       <Upload className="w-10 h-10 mx-auto mb-4 text-gray-400" />
@@ -59,7 +58,10 @@ const DropZone = ({ onFileSelect }: DropZoneProps) => {
       ) : (
         <div className="space-y-2">
           <p className="text-sm text-gray-600">
-            Glissez-déposez un fichier audio ou vidéo, ou cliquez pour sélectionner
+            {disabled 
+              ? "Conversion en cours..."
+              : "Glissez-déposez un fichier audio ou vidéo, ou cliquez pour sélectionner"
+            }
           </p>
           <p className="text-xs text-gray-500">
             Formats acceptés : {ACCEPTED_AUDIO_FORMATS.join(", ")}, {ACCEPTED_VIDEO_FORMATS.join(", ")}

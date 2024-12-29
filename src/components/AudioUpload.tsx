@@ -11,18 +11,79 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const AudioUpload = () => {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [isConverting, setIsConverting] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const handleFileSelect = (file: File) => {
-    if (file.size > MAX_FILE_SIZE) {
-      toast({
-        title: "Fichier trop volumineux",
-        description: "La taille du fichier ne doit pas dépasser 50MB.",
-        variant: "destructive",
-      });
+  const handleFileSelect = async (file: File) => {
+    // Si c'est un fichier audio, on vérifie juste la taille
+    if (file.type.startsWith('audio/')) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: "Fichier trop volumineux",
+          description: "La taille du fichier ne doit pas dépasser 50MB.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setCurrentFile(file);
+      setShowSaveDialog(true);
       return;
     }
+
+    // Si c'est une vidéo et qu'elle dépasse 50MB, on la convertit
+    if (file.type.startsWith('video/') && file.size > MAX_FILE_SIZE) {
+      try {
+        setIsConverting(true);
+        toast({
+          title: "Conversion en cours",
+          description: "La vidéo est en cours de conversion en fichier audio...",
+        });
+
+        // Créer une URL signée temporaire pour le fichier
+        const { data: signedUrl } = await supabase.storage
+          .from('temp-uploads')
+          .createSignedUrl(`temp_${Date.now()}`, 3600);
+
+        if (!signedUrl?.signedUrl) throw new Error("Impossible de créer l'URL signée");
+
+        // Appeler la fonction de conversion
+        const response = await supabase.functions.invoke('convert-video', {
+          body: { videoUrl: signedUrl.signedUrl }
+        });
+
+        if (!response.data?.success) {
+          throw new Error("Échec de la conversion");
+        }
+
+        toast({
+          title: "Conversion réussie",
+          description: "La vidéo a été convertie en fichier audio avec succès.",
+        });
+
+        // Créer un nouveau File object pour l'audio converti
+        const audioResponse = await fetch(response.data.audioPath);
+        const audioBlob = await audioResponse.blob();
+        const audioFile = new File([audioBlob], `converted_${file.name}.mp3`, {
+          type: 'audio/mp3'
+        });
+
+        setCurrentFile(audioFile);
+        setShowSaveDialog(true);
+
+      } catch (error) {
+        console.error('Error converting video:', error);
+        toast({
+          title: "Erreur de conversion",
+          description: "Impossible de convertir la vidéo en audio. Veuillez réessayer.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsConverting(false);
+      }
+      return;
+    }
+
     setCurrentFile(file);
     setShowSaveDialog(true);
   };
@@ -71,7 +132,10 @@ const AudioUpload = () => {
 
   return (
     <>
-      <DropZone onFileSelect={handleFileSelect} />
+      <DropZone 
+        onFileSelect={handleFileSelect} 
+        disabled={isConverting}
+      />
       <SaveDialog
         isOpen={showSaveDialog}
         onClose={() => {

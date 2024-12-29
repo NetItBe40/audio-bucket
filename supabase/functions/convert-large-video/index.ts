@@ -10,12 +10,12 @@ const corsHeaders = {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
     console.log('Starting video conversion process...')
-    const { videoChunk, fileName, chunkIndex, totalChunks } = await req.json()
+    const { videoChunk, fileName, chunkIndex, totalChunks, userId } = await req.json()
     console.log(`Processing chunk ${chunkIndex + 1}/${totalChunks} for file ${fileName}`)
     
     const supabase = createClient(
@@ -44,7 +44,7 @@ serve(async (req) => {
       console.log('Processing final chunk, initiating conversion')
       
       // Create a minimal valid MP3 file
-      const audioFileName = `converted-${Date.now()}.mp3`
+      const audioFileName = `${userId}/converted-${Date.now()}.mp3`
       const mp3Header = new Uint8Array([
         0xFF, 0xFB, 0x90, 0x44, // MPEG 1 Layer 3, 44.1kHz
         0x00, 0x00, 0x00, 0x00, // Padding
@@ -55,7 +55,7 @@ serve(async (req) => {
       
       console.log('Uploading converted audio file...');
       
-      // Upload the MP3 file to audio-recordings
+      // Upload the MP3 file to audio-recordings with the user ID in the path
       const { data: audioData, error: audioUploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(audioFileName, mp3Header, {

@@ -68,6 +68,7 @@ const AudioUpload = () => {
             fileName: file.name,
             chunkIndex: i,
             totalChunks,
+            userId: userData.user.id, // Add user ID to the request
           }),
         });
 

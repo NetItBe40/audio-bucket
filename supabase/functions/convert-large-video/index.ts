@@ -30,11 +30,17 @@ serve(async (req) => {
       bytes[i] = binaryString.charCodeAt(i)
     }
 
-    // Upload chunk to temporary storage with user ID in path
-    const tempFileName = `${userId}/temp-${fileName}-chunk-${chunkIndex}`
+    // Generate unique temp file name using timestamp and random string
+    const timestamp = Date.now()
+    const randomString = Math.random().toString(36).substring(7)
+    const tempFileName = `${userId}/temp-${timestamp}-${randomString}-chunk-${chunkIndex}`
+
+    // Upload chunk to temporary storage
     const { error: uploadError } = await supabase.storage
       .from('temp-uploads')
-      .upload(tempFileName, bytes)
+      .upload(tempFileName, bytes, {
+        upsert: false // Prevent overwriting existing files
+      })
 
     if (uploadError) {
       throw uploadError
@@ -59,7 +65,7 @@ serve(async (req) => {
       // Combine all chunks into one video file
       const chunks = []
       for (let i = 0; i < totalChunks; i++) {
-        const chunkPath = `${userId}/temp-${fileName}-chunk-${i}`
+        const chunkPath = `${userId}/temp-${timestamp}-${randomString}-chunk-${i}`
         const { data: chunkData, error: chunkError } = await supabase.storage
           .from('temp-uploads')
           .download(chunkPath)
@@ -85,8 +91,8 @@ serve(async (req) => {
       
       console.log('Conversion completed, uploading result...');
       
-      // Upload the MP3 file to audio-recordings with the user ID in the path
-      const audioFileName = `${userId}/converted-${Date.now()}.mp3`
+      // Generate unique audio file name
+      const audioFileName = `${userId}/converted-${timestamp}-${randomString}.mp3`
       const { data: audioData, error: audioUploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(audioFileName, mp3Data, {
@@ -103,7 +109,7 @@ serve(async (req) => {
 
       // Clean up temporary chunks
       for (let i = 0; i < totalChunks; i++) {
-        const tempChunkName = `${userId}/temp-${fileName}-chunk-${i}`
+        const tempChunkName = `${userId}/temp-${timestamp}-${randomString}-chunk-${i}`
         await supabase.storage
           .from('temp-uploads')
           .remove([tempChunkName])

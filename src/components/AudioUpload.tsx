@@ -45,6 +45,8 @@ const AudioUpload = () => {
 
       // Split file into chunks
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      const timestamp = Date.now();
+      const randomString = Math.random().toString(36).substring(7);
       
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
@@ -65,7 +67,7 @@ const AudioUpload = () => {
         const { data, error } = await supabase.functions.invoke('convert-large-video', {
           body: JSON.stringify({
             videoChunk: base64Chunk,
-            fileName: file.name,
+            fileName: `${timestamp}-${randomString}-${file.name}`,
             chunkIndex: i,
             totalChunks,
             userId: userData.user.id,
@@ -117,11 +119,15 @@ const AudioUpload = () => {
       if (userError) throw userError;
       if (!userData.user) throw new Error("User not authenticated");
 
-      const fileName = `${userData.user.id}/${Date.now()}-${file.name}`;
+      const timestamp = Date.now();
+      const randomString = Math.random().toString(36).substring(7);
+      const fileName = `${userData.user.id}/${timestamp}-${randomString}-${file.name}`;
 
       const { error: uploadError } = await supabase.storage
         .from('audio-recordings')
-        .upload(fileName, file);
+        .upload(fileName, file, {
+          upsert: false
+        });
 
       if (uploadError) throw uploadError;
 

@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { FFmpeg } from 'https://esm.sh/@ffmpeg/ffmpeg@0.12.7'
-import { toBlobURL } from 'https://esm.sh/@ffmpeg/util@0.12.1'
+import { fetchFile, toBlobURL } from 'https://esm.sh/@ffmpeg/util@0.12.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,11 +44,17 @@ serve(async (req) => {
     if (chunkIndex === totalChunks - 1) {
       console.log('Processing final chunk, initiating conversion')
       
-      // Initialize FFmpeg
-      const ffmpeg = new FFmpeg()
+      // Initialize FFmpeg with proper configuration
+      const ffmpeg = new FFmpeg();
+      console.log('Loading FFmpeg...');
+      
       await ffmpeg.load({
-        coreURL: await toBlobURL(`https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm`, 'application/wasm')
-      })
+        coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+        wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+        workerURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.4/dist/umd/ffmpeg-core.worker.js', 'application/javascript')
+      });
+      
+      console.log('FFmpeg loaded successfully');
 
       // Combine all chunks into one video file
       const chunks = []
@@ -70,12 +76,14 @@ serve(async (req) => {
         offset += chunk.length
       })
 
+      console.log('Combined video chunks, starting conversion...');
+
       // Convert to MP3
-      ffmpeg.writeFile('input.webm', combinedVideo)
+      await ffmpeg.writeFile('input.webm', combinedVideo)
       await ffmpeg.exec(['-i', 'input.webm', '-vn', '-acodec', 'libmp3lame', '-q:a', '2', 'output.mp3'])
       const mp3Data = await ffmpeg.readFile('output.mp3')
       
-      console.log('Uploading converted audio file...')
+      console.log('Conversion completed, uploading result...');
       
       // Upload the MP3 file to audio-recordings with the user ID in the path
       const audioFileName = `${userId}/converted-${Date.now()}.mp3`

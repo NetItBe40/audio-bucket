@@ -61,12 +61,8 @@ const AudioUpload = () => {
           reader.readAsDataURL(chunk);
         });
 
-        // Upload chunk
-        const response = await fetch('/api/convert-large-video', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+        // Upload chunk using Supabase Edge Function
+        const { data, error } = await supabase.functions.invoke('convert-large-video', {
           body: JSON.stringify({
             videoChunk: base64Chunk,
             fileName: file.name,
@@ -75,11 +71,7 @@ const AudioUpload = () => {
           }),
         });
 
-        if (!response.ok) {
-          throw new Error('Chunk upload failed');
-        }
-
-        const data = await response.json();
+        if (error) throw error;
         
         // If this was the last chunk and we got back an audio path
         if (i === totalChunks - 1 && data.audioPath) {

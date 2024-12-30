@@ -28,8 +28,14 @@ const YoutubeConverter = () => {
       if (error) throw error;
       if (!data.downloadUrl) throw new Error('No download URL received');
 
+      // Create a Blob from the array buffer
+      const fileBlob = new Blob(
+        [new Uint8Array(data.fileData)],
+        { type: data.contentType }
+      );
+
       setConvertedFile({
-        url: data.downloadUrl,
+        url: URL.createObjectURL(fileBlob),
         title: data.title || 'YouTube conversion'
       });
       setShowSaveDialog(true);
@@ -49,15 +55,15 @@ const YoutubeConverter = () => {
     if (!convertedFile) return;
 
     try {
-      // Télécharger le fichier MP3
-      const response = await fetch(convertedFile.url);
-      const blob = await response.blob();
-      
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Non authentifié");
 
       const timestamp = Date.now();
       const fileName = `${userData.user.id}/${timestamp}-${title}.mp3`;
+
+      // Get the Blob from the object URL
+      const response = await fetch(convertedFile.url);
+      const blob = await response.blob();
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage

@@ -14,7 +14,6 @@ if (!rapidApiKey) {
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -23,7 +22,7 @@ serve(async (req) => {
     const { youtubeUrl } = await req.json();
     console.log('Processing YouTube URL:', youtubeUrl);
 
-    // Initier la conversion
+    // Initiate conversion
     const convertUrl = `https://youtube-to-mp315.p.rapidapi.com/download?url=${encodeURIComponent(youtubeUrl)}&format=mp3&quality=0`;
     const options = {
       method: 'POST',
@@ -43,7 +42,7 @@ serve(async (req) => {
       const maxAttempts = 12; // 2 minutes maximum
 
       while (attempts < maxAttempts) {
-        await wait(10000); // 10 secondes entre chaque vérification
+        await wait(10000); // 10 seconds between checks
         
         const statusUrl = `https://youtube-to-mp315.p.rapidapi.com/status/${result.id}`;
         const statusResponse = await fetch(statusUrl, {
@@ -55,9 +54,25 @@ serve(async (req) => {
         console.log(`Status check attempt ${attempts + 1}:`, statusResult);
 
         if (statusResult.status === 'AVAILABLE') {
+          // Download the file
+          console.log('Downloading file from:', statusResult.downloadUrl);
+          const fileResponse = await fetch(statusResult.downloadUrl);
+          const fileBlob = await fileResponse.blob();
+          
+          // Return both the file data and metadata
           return new Response(
-            JSON.stringify(statusResult),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({
+              downloadUrl: statusResult.downloadUrl,
+              title: statusResult.title,
+              fileData: await fileBlob.arrayBuffer(),
+              contentType: fileResponse.headers.get('content-type') || 'audio/mpeg'
+            }),
+            { 
+              headers: { 
+                ...corsHeaders, 
+                'Content-Type': 'application/json'
+              } 
+            }
           );
         }
 

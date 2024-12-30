@@ -16,7 +16,17 @@ serve(async (req) => {
 
   try {
     console.log('Starting video conversion process...')
-    const { videoChunk, fileName, chunkIndex, totalChunks, userId } = await req.json()
+    
+    // Parse request body with error handling
+    let body;
+    try {
+      body = await req.json()
+    } catch (error) {
+      console.error('Error parsing request body:', error)
+      throw new Error('Invalid request body')
+    }
+    
+    const { videoChunk, fileName, chunkIndex, totalChunks, userId } = body
     
     if (!videoChunk || !fileName || chunkIndex === undefined || !totalChunks || !userId) {
       throw new Error('Missing required parameters')
@@ -24,16 +34,23 @@ serve(async (req) => {
     
     console.log(`Processing chunk ${chunkIndex + 1}/${totalChunks} for file ${fileName}`)
     
+    // Initialize Supabase client
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Convert base64 chunk to Uint8Array
-    const binaryString = atob(videoChunk)
-    const bytes = new Uint8Array(binaryString.length)
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i)
+    // Convert base64 chunk to Uint8Array with error handling
+    let bytes;
+    try {
+      const binaryString = atob(videoChunk)
+      bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+    } catch (error) {
+      console.error('Error converting base64 to binary:', error)
+      throw new Error('Invalid video chunk data')
     }
 
     const timestamp = Date.now()
@@ -42,19 +59,22 @@ serve(async (req) => {
 
     console.log(`Uploading chunk to temporary storage: ${tempFileName}`)
 
-    const { error: uploadError } = await supabase.storage
-      .from('temp-uploads')
-      .upload(tempFileName, bytes, {
-        contentType: 'application/octet-stream',
-        upsert: true
-      })
+    // Upload chunk with error handling
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('temp-uploads')
+        .upload(tempFileName, bytes, {
+          contentType: 'application/octet-stream',
+          upsert: true
+        })
 
-    if (uploadError) {
-      console.error('Error uploading chunk:', uploadError)
-      throw uploadError
+      if (uploadError) throw uploadError
+    } catch (error) {
+      console.error('Error uploading chunk:', error)
+      throw new Error(`Failed to upload chunk: ${error.message}`)
     }
 
-    // If this is the last chunk, combine all chunks and convert to MP3
+    // Process final chunk
     if (chunkIndex === totalChunks - 1) {
       console.log('Processing final chunk, initiating conversion')
       
@@ -65,7 +85,7 @@ serve(async (req) => {
         await ffmpeg.load()
         console.log('FFmpeg loaded successfully')
 
-        // Combine all chunks
+        // Combine chunks
         console.log('Combining video chunks...')
         const chunks = []
         for (let i = 0; i < totalChunks; i++) {
@@ -84,21 +104,25 @@ serve(async (req) => {
           chunks.push(new Uint8Array(await chunkData.arrayBuffer()))
         }
 
-        const combinedVideo = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
+        // Combine video chunks
+        const totalSize = chunks.reduce((acc, chunk) => acc + chunk.length, 0)
+        const combinedVideo = new Uint8Array(totalSize)
         let offset = 0
-        chunks.forEach(chunk => {
+        for (const chunk of chunks) {
           combinedVideo.set(chunk, offset)
           offset += chunk.length
-        })
+        }
 
         console.log('Combined video chunks, starting conversion...')
 
+        // Convert to audio
         await ffmpeg.writeFile('input.webm', combinedVideo)
         await ffmpeg.exec(['-i', 'input.webm', '-vn', '-acodec', 'libmp3lame', '-q:a', '2', 'output.mp3'])
         const mp3Data = await ffmpeg.readFile('output.mp3')
         
         console.log('Conversion completed, uploading result...')
         
+        // Upload converted audio
         const audioFileName = `${userId}/converted-${timestamp}-${randomString}.mp3`
         const { error: audioUploadError } = await supabase.storage
           .from('audio-recordings')
@@ -141,6 +165,7 @@ serve(async (req) => {
       }
     }
 
+    // Return success for intermediate chunks
     return new Response(
       JSON.stringify({ 
         success: true,

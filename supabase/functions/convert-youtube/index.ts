@@ -25,8 +25,15 @@ serve(async (req) => {
   try {
     const { youtubeUrl } = await req.json();
     
-    if (!youtubeUrl || !youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be')) {
-      throw new Error('Invalid YouTube URL');
+    if (!youtubeUrl || (!youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be'))) {
+      console.error('Invalid YouTube URL:', youtubeUrl);
+      return new Response(
+        JSON.stringify({ error: 'Invalid YouTube URL' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
     }
     
     console.log('Processing YouTube URL:', youtubeUrl);
@@ -42,10 +49,27 @@ serve(async (req) => {
       body: JSON.stringify({ url: youtubeUrl, format: 'mp3', quality: '0' })
     };
 
+    console.log('Sending request to RapidAPI...');
     const response = await fetch(convertUrl, options);
+    
     if (!response.ok) {
-      console.error('RapidAPI initial response error:', response.status, await response.text());
-      throw new Error(`RapidAPI returned status ${response.status}`);
+      const errorText = await response.text();
+      console.error('RapidAPI error response:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'RapidAPI request failed',
+          details: errorText
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: response.status
+        }
+      );
     }
 
     const result = await response.json();
@@ -58,6 +82,7 @@ serve(async (req) => {
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 10000)); // 10 seconds between checks
         
+        console.log(`Checking conversion status (attempt ${attempts + 1}/${maxAttempts})...`);
         const statusUrl = `https://youtube-to-mp315.p.rapidapi.com/status/${result.id}`;
         const statusResponse = await fetch(statusUrl, {
           method: 'GET',
@@ -65,8 +90,20 @@ serve(async (req) => {
         });
         
         if (!statusResponse.ok) {
-          console.error('Status check failed:', statusResponse.status, await statusResponse.text());
-          throw new Error(`Status check failed with status ${statusResponse.status}`);
+          console.error('Status check failed:', {
+            status: statusResponse.status,
+            statusText: statusResponse.statusText
+          });
+          return new Response(
+            JSON.stringify({ 
+              error: 'Failed to check conversion status',
+              details: await statusResponse.text()
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: statusResponse.status
+            }
+          );
         }
 
         const statusResult = await statusResponse.json();
@@ -93,17 +130,43 @@ serve(async (req) => {
 
         if (statusResult.status === 'EXPIRED' || statusResult.status === 'CONVERSION_ERROR') {
           console.error('Conversion failed with status:', statusResult.status);
-          throw new Error(`Conversion failed: ${statusResult.status}`);
+          return new Response(
+            JSON.stringify({ 
+              error: `Conversion failed: ${statusResult.status}`,
+              details: statusResult
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 400
+            }
+          );
         }
 
         attempts++;
       }
 
-      throw new Error('Conversion timeout: process took too long');
-    } else {
-      console.error('Unexpected initial status:', result.status);
-      throw new Error(`Unexpected conversion status: ${result.status}`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Conversion timeout',
+          details: 'Process took too long'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 408
+        }
+      );
     }
+
+    return new Response(
+      JSON.stringify({ 
+        error: 'Unexpected conversion status',
+        details: result
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400
+      }
+    );
 
   } catch (error) {
     console.error('Error details:', error);

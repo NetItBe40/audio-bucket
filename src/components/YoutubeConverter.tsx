@@ -33,7 +33,7 @@ const YoutubeConverter = () => {
       
       if (!data?.downloadUrl) {
         console.error('Invalid response:', data);
-        throw new Error('No download URL received');
+        throw new Error(data?.error || 'No download URL received');
       }
 
       console.log('Conversion successful:', data);

@@ -2,6 +2,7 @@ import Layout from "@/components/Layout";
 import AudioRecorder from "@/components/AudioRecorder";
 import AudioUpload from "@/components/AudioUpload";
 import RecordingsList from "@/components/RecordingsList";
+import YoutubeConverter from "@/components/YoutubeConverter";
 
 const Index = () => {
   return (
@@ -12,6 +13,7 @@ const Index = () => {
             Nouvel enregistrement
           </h2>
           <AudioRecorder />
+          <YoutubeConverter />
           <AudioUpload />
         </div>
 

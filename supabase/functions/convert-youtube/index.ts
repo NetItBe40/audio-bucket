@@ -20,31 +20,37 @@ async function startConversion(videoId: string, rapidApiKey: string) {
   const options = {
     method: 'GET',
     headers: {
+      'content-type': 'application/json',
       'X-RapidAPI-Key': rapidApiKey,
       'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
     }
   };
 
-  const response = await fetch(url, options);
-  
-  if (!response.ok) {
-    console.error('RapidAPI error:', {
-      status: response.status,
-      statusText: response.statusText
-    });
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
-  }
+  try {
+    const response = await fetch(url, options);
+    
+    if (!response.ok) {
+      console.error('RapidAPI error:', {
+        status: response.status,
+        statusText: response.statusText
+      });
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
 
-  const result = await response.json();
-  console.log('API Response:', result);
+    const result = await response.json();
+    console.log('API Response:', result);
 
-  if (result.status === 'ok' && result.link) {
-    return {
-      downloadUrl: result.link,
-      title: result.title || 'YouTube conversion'
-    };
-  } else {
-    throw new Error(result.msg || 'Conversion failed');
+    if (result.status === 'ok' && result.link) {
+      return {
+        downloadUrl: result.link,
+        title: result.title || 'YouTube conversion'
+      };
+    } else {
+      throw new Error(result.msg || 'Conversion failed');
+    }
+  } catch (error) {
+    console.error('Error during API call:', error);
+    throw error;
   }
 }
 

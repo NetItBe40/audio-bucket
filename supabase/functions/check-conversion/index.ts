@@ -31,12 +31,19 @@ serve(async (req) => {
     );
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('Cloud Convert API error:', error);
-      throw new Error(`Cloud Convert API error: ${error}`);
+      const errorText = await response.text();
+      console.error('Cloud Convert API error response:', errorText);
+      throw new Error(`Cloud Convert API error: ${errorText}`);
     }
 
     const jobData = await response.json();
+    console.log('Cloud Convert job data:', JSON.stringify(jobData, null, 2));
+
+    if (!jobData.data) {
+      console.error('Invalid job data received:', jobData);
+      throw new Error('Invalid job data received from Cloud Convert');
+    }
+
     console.log('Cloud Convert job status:', jobData.data.status);
     console.log('Tasks status:', jobData.data.tasks.map(t => `${t.operation}: ${t.status}`).join(', '));
 
@@ -62,8 +69,9 @@ serve(async (req) => {
 
     // Si le job a échoué
     if (jobData.data.status === 'error') {
-      console.error('Cloud Convert processing error:', jobData.data.message);
-      throw new Error(`Cloud Convert processing error: ${jobData.data.message}`);
+      const errorMessage = jobData.data.message || jobData.data.error?.message || 'Unknown error occurred';
+      console.error('Cloud Convert processing error:', errorMessage);
+      throw new Error(`Cloud Convert processing error: ${errorMessage}`);
     }
 
     // Si le job est terminé, on vérifie que toutes les tâches sont bien terminées
@@ -90,6 +98,7 @@ serve(async (req) => {
       const exportTask = jobData.data.tasks.find(task => task.operation === 'export/url');
       
       if (!exportTask || !exportTask.result?.files?.[0]?.url) {
+        console.error('No export URL found in completed job:', exportTask);
         throw new Error('No export URL found in completed job');
       }
 

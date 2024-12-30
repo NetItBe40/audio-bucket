@@ -59,24 +59,24 @@ serve(async (req) => {
     const safeTitle = videoDetails.title.replace(/[^\w\s]/gi, '');
     console.log('Video title:', safeTitle);
 
-    // Use y2mate API for conversion
-    console.log('Starting conversion with y2mate...');
+    // Use youtube-to-mp315 API for conversion
+    console.log('Starting conversion with youtube-to-mp315...');
     const rapidApiKey = Deno.env.get('RAPIDAPI_KEY');
     if (!rapidApiKey) {
       throw new Error('RapidAPI key not configured');
     }
 
-    const y2mateResponse = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+    const y2mateResponse = await fetch(`https://youtube-to-mp315.p.rapidapi.com/dl?id=${videoId}`, {
       headers: {
         'X-RapidAPI-Key': rapidApiKey,
-        'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com'
+        'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
       }
     });
 
     const y2mateData = await y2mateResponse.json();
-    console.log('Y2mate response:', y2mateData);
+    console.log('youtube-to-mp315 response:', y2mateData);
 
-    if (y2mateData.status !== 'ok' || !y2mateData.link) {
+    if (!y2mateData.link) {
       throw new Error('Échec de la conversion');
     }
 

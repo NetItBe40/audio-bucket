@@ -20,6 +20,8 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
       const timestamp = Date.now();
       const fileName = `${timestamp}-${sanitizedFileName}`;
 
+      console.log('Starting upload of file:', fileName);
+
       // Upload to temp-uploads with XHR for progress tracking
       const xhr = new XMLHttpRequest();
       const formData = new FormData();
@@ -80,11 +82,22 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
         throw new Error('Invalid response from conversion service');
       }
 
-      console.log('Conversion started:', { conversionId: data.conversionId, audioPath: data.audioPath });
+      console.log('Conversion started:', { 
+        conversionId: data.conversionId, 
+        audioPath: data.audioPath 
+      });
 
+      let retryCount = 0;
+      const maxRetries = 30; // 1 minute maximum (2s * 30)
+      
       // Polling pour vérifier l'état de la conversion
       const checkConversion = async () => {
         try {
+          if (retryCount >= maxRetries) {
+            throw new Error('Conversion timeout after 1 minute');
+          }
+          retryCount++;
+
           const { data: statusData, error: statusError } = await supabase.functions.invoke('check-conversion', {
             body: JSON.stringify({
               jobId: data.conversionId,
@@ -103,7 +116,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
             setProgress(statusData.progress);
           }
 
-          // Log des statuts des tâches si disponible
+          // Log des statuts des tâches
           if (statusData.tasks) {
             console.log('Tasks status:', statusData.tasks.map((t: any) => 
               `${t.operation}: ${t.status}`
@@ -111,6 +124,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
           }
 
           if (statusData.status === 'completed') {
+            console.log('Conversion completed successfully');
             onUploadComplete(data.audioPath);
             toast({
               title: "Succès",
@@ -125,7 +139,8 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
             throw new Error(`Conversion failed: ${statusData.details || 'Unknown error'}`);
           }
 
-          // Continue polling every 2 seconds
+          // Si toujours en cours, on continue le polling
+          console.log(`Conversion in progress (attempt ${retryCount}/${maxRetries})`);
           setTimeout(checkConversion, 2000);
         } catch (error) {
           console.error('Conversion check error:', error);

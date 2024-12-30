@@ -14,15 +14,15 @@ function extractVideoId(url: string) {
 async function startConversion(videoId: string, rapidApiKey: string) {
   console.log('Starting conversion for video ID:', videoId);
   
-  const url = 'https://youtube-to-mp3-v2.p.rapidapi.com/download';
+  const url = 'https://youtube-to-mp315.p.rapidapi.com/download';
   console.log('Making request to:', url);
   
   const options = {
     method: 'POST',
     headers: {
+      'content-type': 'application/json',
       'X-RapidAPI-Key': rapidApiKey,
-      'X-RapidAPI-Host': 'youtube-to-mp3-v2.p.rapidapi.com',
-      'Content-Type': 'application/json',
+      'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
     },
     body: JSON.stringify({
       url: `https://www.youtube.com/watch?v=${videoId}`,
@@ -47,18 +47,30 @@ async function startConversion(videoId: string, rapidApiKey: string) {
     const result = await response.json();
     console.log('API Response:', result);
 
-    // Attendre que la conversion soit terminée
-    let conversionStatus = 'CONVERTING';
+    if (result.status === 'ERROR') {
+      throw new Error(result.message || 'Conversion failed');
+    }
+
+    // Si nous avons une URL de téléchargement directe, on la retourne
+    if (result.downloadUrl) {
+      return {
+        downloadUrl: result.downloadUrl,
+        title: result.title || 'YouTube conversion'
+      };
+    }
+
+    // Sinon, on attend que la conversion soit terminée
+    let conversionStatus = result.status || 'CONVERTING';
     let attempts = 0;
     const maxAttempts = 30; // 30 secondes maximum
     
     while (conversionStatus === 'CONVERTING' && attempts < maxAttempts) {
       const statusResponse = await fetch(
-        `https://youtube-to-mp3-v2.p.rapidapi.com/status/${result.id}`, 
+        `https://youtube-to-mp315.p.rapidapi.com/status/${result.id}`, 
         {
           headers: {
             'X-RapidAPI-Key': rapidApiKey,
-            'X-RapidAPI-Host': 'youtube-to-mp3-v2.p.rapidapi.com',
+            'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com',
           }
         }
       );
@@ -72,7 +84,7 @@ async function startConversion(videoId: string, rapidApiKey: string) {
       
       if (statusResult.status === 'AVAILABLE') {
         return {
-          downloadUrl: statusResult.downloadUrl || result.downloadUrl,
+          downloadUrl: statusResult.downloadUrl,
           title: statusResult.title || 'YouTube conversion'
         };
       } else if (statusResult.status === 'ERROR') {

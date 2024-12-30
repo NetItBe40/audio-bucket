@@ -6,29 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-async function uploadToAssemblyAI(file: ArrayBuffer) {
-  console.log('Starting AssemblyAI upload...');
-  const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
-    method: 'POST',
-    headers: {
-      'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
-      'Content-Type': 'application/octet-stream',
-    },
-    body: file
-  });
-
-  if (!uploadResponse.ok) {
-    const errorText = await uploadResponse.text();
-    console.error('AssemblyAI upload error:', errorText);
-    throw new Error(`AssemblyAI upload failed: ${errorText}`);
-  }
-
-  const { upload_url } = await uploadResponse.json();
-  console.log('File uploaded to AssemblyAI:', upload_url);
-  return upload_url;
-}
-
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -67,7 +46,25 @@ serve(async (req) => {
       throw new Error('Failed to download file from temp-uploads');
     }
     const fileBuffer = await fileResponse.arrayBuffer();
-    const uploadUrl = await uploadToAssemblyAI(fileBuffer);
+
+    console.log('Starting AssemblyAI upload...');
+    const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
+        'Content-Type': 'application/octet-stream',
+      },
+      body: fileBuffer
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error('AssemblyAI upload error:', errorText);
+      throw new Error(`AssemblyAI upload failed: ${errorText}`);
+    }
+
+    const { upload_url } = await uploadResponse.json();
+    console.log('File uploaded to AssemblyAI:', upload_url);
 
     // Start conversion process
     const conversionResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
@@ -77,7 +74,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        audio_url: uploadUrl,
+        audio_url: upload_url,
         language_code: 'fr',
       }),
     });
@@ -89,19 +86,30 @@ serve(async (req) => {
     const conversionData = await conversionResponse.json();
     console.log('Conversion started:', conversionData);
 
-    // Return the conversion ID and target filename
+    // Return the conversion ID and target filename with CORS headers
     return new Response(
       JSON.stringify({ 
         conversionId: conversionData.id,
         audioPath: audioFileName
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     );
   } catch (error) {
     console.error('Error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        }, 
+        status: 500 
+      }
     );
   }
 });

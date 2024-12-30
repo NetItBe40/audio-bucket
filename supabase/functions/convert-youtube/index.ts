@@ -14,20 +14,23 @@ function extractVideoId(url: string) {
 async function startConversion(videoId: string, rapidApiKey: string) {
   console.log('Starting conversion for video ID:', videoId);
   
-  // Updated URL format according to RapidAPI documentation
-  const url = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
+  const url = `https://youtube-mp3-downloader-v2.p.rapidapi.com/ytmp3/ytmp3/`;
   console.log('Making request to:', url);
   
   const options = {
     method: 'GET',
     headers: {
       'X-RapidAPI-Key': rapidApiKey,
-      'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com'
+      'X-RapidAPI-Host': 'youtube-mp3-downloader-v2.p.rapidapi.com'
+    },
+    params: {
+      url: `https://www.youtube.com/watch?v=${videoId}`
     }
   };
 
   try {
-    const response = await fetch(url, options);
+    console.log('Request options:', JSON.stringify(options, null, 2));
+    const response = await fetch(`${url}?url=https://www.youtube.com/watch?v=${videoId}`, options);
     console.log('Response status:', response.status);
     
     if (!response.ok) {
@@ -35,6 +38,8 @@ async function startConversion(videoId: string, rapidApiKey: string) {
         status: response.status,
         statusText: response.statusText
       });
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
       throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 

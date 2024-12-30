@@ -63,7 +63,7 @@ serve(async (req) => {
     console.log('File public URL:', publicUrl);
 
     // Create a job with Cloud Convert using optimized parameters
-    console.log('Creating Cloud Convert job...');
+    console.log('Creating Cloud Convert job with optimized audio parameters...');
     const response = await fetch('https://api.cloudconvert.com/v2/jobs', {
       method: 'POST',
       headers: {
@@ -83,7 +83,7 @@ serve(async (req) => {
             output_format: "mp3",
             engine: "ffmpeg",
             audio_codec: "libmp3lame",
-            audio_bitrate: 192000,
+            audio_bitrate: "192k",
             audio_frequency: 44100,
             audio_channels: 2,
             audio_quality: 0, // Meilleure qualité pour libmp3lame

@@ -19,7 +19,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
       const sanitizedFileName = file.name.replace(/\s+/g, '_');
       const timestamp = Date.now();
       const fileName = `${timestamp}-${sanitizedFileName}`;
-
+      
       console.log('Starting upload of file:', fileName);
 
       // Upload to temp-uploads with XHR for progress tracking
@@ -88,13 +88,13 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
       });
 
       let retryCount = 0;
-      const maxRetries = 30; // 1 minute maximum (2s * 30)
+      const maxRetries = 60; // 5 minutes maximum (5s * 60)
       
       // Polling pour vérifier l'état de la conversion
       const checkConversion = async () => {
         try {
           if (retryCount >= maxRetries) {
-            throw new Error('Conversion timeout after 1 minute');
+            throw new Error('Conversion timeout after 5 minutes');
           }
           retryCount++;
 
@@ -141,7 +141,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
 
           // Si toujours en cours, on continue le polling
           console.log(`Conversion in progress (attempt ${retryCount}/${maxRetries})`);
-          setTimeout(checkConversion, 2000);
+          setTimeout(checkConversion, 5000); // 5 secondes entre chaque tentative
         } catch (error) {
           console.error('Conversion check error:', error);
           toast({

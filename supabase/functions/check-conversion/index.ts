@@ -8,6 +8,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MAX_RETRIES = 60; // 5 minutes maximum (5s * 60)
+const RETRY_DELAY = 5000; // 5 secondes entre chaque tentative
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -120,7 +123,28 @@ serve(async (req) => {
       }
 
       const exportUrl = exportTask.result.files[0].url;
-      const audioBlob = await downloadConvertedFile(exportUrl);
+      console.log('Export URL found:', exportUrl);
+
+      // Add retries for file download
+      let audioBlob = null;
+      let downloadError = null;
+      
+      for (let i = 0; i < 3; i++) {
+        try {
+          audioBlob = await downloadConvertedFile(exportUrl);
+          if (audioBlob && audioBlob.size > 0) {
+            break;
+          }
+        } catch (error) {
+          console.error(`Download attempt ${i + 1} failed:`, error);
+          downloadError = error;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      if (!audioBlob || audioBlob.size === 0) {
+        throw new Error(`Failed to download file after retries: ${downloadError?.message}`);
+      }
       
       // Upload to Supabase Storage with retries
       await uploadToStorage(audioBlob, audioPath);

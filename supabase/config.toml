@@ -5,6 +5,7 @@ verify_jwt = true
 
 [functions.check-conversion]
 verify_jwt = true
+timeout_seconds = 300
 
 [functions.transcribe]
 verify_jwt = true

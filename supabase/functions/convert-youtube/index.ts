@@ -1,14 +1,34 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import ytdl from 'https://esm.sh/ytdl-core@4.11.5';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function getVideoDetails(videoId: string, apiKey: string) {
+  const response = await fetch(
+    `https://youtube.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`
+  );
+  const data = await response.json();
+  
+  if (!data.items?.length) {
+    throw new Error('Vidéo non trouvée');
+  }
+  
+  return {
+    title: data.items[0].snippet.title,
+    description: data.items[0].snippet.description
+  };
+}
+
+function extractVideoId(url: string) {
+  const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[7].length === 11) ? match[7] : null;
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -22,76 +42,50 @@ serve(async (req) => {
       throw new Error('URL YouTube manquante');
     }
 
-    // Validate YouTube URL
-    if (!ytdl.validateURL(youtubeUrl)) {
+    const videoId = extractVideoId(youtubeUrl);
+    if (!videoId) {
       console.error('Invalid YouTube URL:', youtubeUrl);
       throw new Error('URL YouTube invalide');
     }
 
-    // Get video info
-    console.log('Getting video info...');
-    const info = await ytdl.getInfo(youtubeUrl);
-    const videoTitle = info.videoDetails.title.replace(/[^\w\s]/gi, '');
-    console.log('Video title:', videoTitle);
-    
-    // Get audio format
-    const audioFormat = ytdl.chooseFormat(info.formats, { 
-      quality: 'highestaudio',
-      filter: 'audioonly' 
+    const apiKey = Deno.env.get('YOUTUBE_API_KEY');
+    if (!apiKey) {
+      throw new Error('YouTube API key not configured');
+    }
+
+    // Get video details from YouTube API
+    console.log('Fetching video details from YouTube API...');
+    const videoDetails = await getVideoDetails(videoId, apiKey);
+    const safeTitle = videoDetails.title.replace(/[^\w\s]/gi, '');
+    console.log('Video title:', safeTitle);
+
+    // Use y2mate API for conversion
+    console.log('Starting conversion with y2mate...');
+    const rapidApiKey = Deno.env.get('RAPIDAPI_KEY');
+    if (!rapidApiKey) {
+      throw new Error('RapidAPI key not configured');
+    }
+
+    const y2mateResponse = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+      headers: {
+        'X-RapidAPI-Key': rapidApiKey,
+        'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com'
+      }
     });
 
-    if (!audioFormat) {
-      console.error('No audio format available');
-      throw new Error('Aucun format audio disponible');
+    const y2mateData = await y2mateResponse.json();
+    console.log('Y2mate response:', y2mateData);
+
+    if (y2mateData.status !== 'ok' || !y2mateData.link) {
+      throw new Error('Échec de la conversion');
     }
 
-    console.log('Selected audio format:', audioFormat.mimeType);
-
-    // Create Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing Supabase configuration');
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Download audio and upload to Supabase Storage
-    console.log('Downloading audio stream...');
-    const response = await fetch(audioFormat.url);
-    if (!response.ok) {
-      console.error('Download failed:', response.status, response.statusText);
-      throw new Error('Échec du téléchargement');
-    }
-
-    const timestamp = Date.now();
-    const fileName = `${timestamp}-${videoTitle}.mp3`;
-    console.log('Uploading to Supabase Storage:', fileName);
-    
-    const { error: uploadError, data: uploadData } = await supabase.storage
-      .from('audio-recordings')
-      .upload(fileName, response.body, {
-        contentType: 'audio/mpeg',
-        duplex: 'half'
-      });
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      throw new Error('Échec de l\'upload');
-    }
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('audio-recordings')
-      .getPublicUrl(fileName);
-
-    console.log('Conversion completed successfully');
+    console.log('Conversion successful, returning download link');
     
     return new Response(
       JSON.stringify({
-        downloadUrl: publicUrl,
-        title: videoTitle
+        downloadUrl: y2mateData.link,
+        title: safeTitle
       }),
       { 
         headers: { 

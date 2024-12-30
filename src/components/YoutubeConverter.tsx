@@ -21,14 +21,22 @@ const YoutubeConverter = () => {
 
     setIsConverting(true);
     try {
+      console.log('Starting conversion for URL:', url);
       const { data, error } = await supabase.functions.invoke('convert-youtube', {
         body: { youtubeUrl: url }
       });
 
-      if (error) throw error;
-      if (!data.downloadUrl) throw new Error('No download URL received');
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
+      }
+      
+      if (!data?.downloadUrl) {
+        console.error('Invalid response:', data);
+        throw new Error('No download URL received');
+      }
 
-      // Store the download URL and title
+      console.log('Conversion successful:', data);
       setConvertedFile({
         url: data.downloadUrl,
         title: data.title || 'YouTube conversion'
@@ -38,7 +46,7 @@ const YoutubeConverter = () => {
       console.error('Conversion error:', error);
       toast({
         title: "Erreur de conversion",
-        description: "Une erreur est survenue lors de la conversion de la vidéo",
+        description: error.message || "Une erreur est survenue lors de la conversion de la vidéo",
         variant: "destructive",
       });
     } finally {
@@ -56,13 +64,13 @@ const YoutubeConverter = () => {
       const timestamp = Date.now();
       const fileName = `${userData.user.id}/${timestamp}-${title}.mp3`;
 
-      // Download the file from the URL
+      console.log('Downloading file from URL:', convertedFile.url);
       const response = await fetch(convertedFile.url);
       if (!response.ok) throw new Error('Failed to download the file');
       
       const blob = await response.blob();
 
-      // Upload to Supabase Storage
+      console.log('Uploading file to Supabase Storage:', fileName);
       const { error: uploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(fileName, blob, {
@@ -71,7 +79,6 @@ const YoutubeConverter = () => {
 
       if (uploadError) throw uploadError;
 
-      // Create recording entry
       const { error: insertError } = await supabase
         .from('recordings')
         .insert({
@@ -96,7 +103,7 @@ const YoutubeConverter = () => {
       console.error('Save error:', error);
       toast({
         title: "Erreur",
-        description: "Une erreur est survenue lors de la sauvegarde",
+        description: error.message || "Une erreur est survenue lors de la sauvegarde",
         variant: "destructive",
       });
     }

@@ -12,8 +12,14 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, {
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      },
+    });
   }
 
   try {
@@ -68,7 +74,6 @@ serve(async (req) => {
         if (statusResult.status === 'AVAILABLE') {
           console.log('Conversion successful, download URL:', statusResult.downloadUrl);
           
-          // Return the download URL and metadata directly
           return new Response(
             JSON.stringify({
               downloadUrl: statusResult.downloadUrl,
@@ -76,7 +81,11 @@ serve(async (req) => {
               contentType: 'audio/mpeg'
             }),
             { 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              headers: { 
+                ...corsHeaders, 
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache'
+              }
             }
           );
         }

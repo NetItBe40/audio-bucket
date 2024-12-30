@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MAX_RETRIES = 10;
+const DELAY = 2000; // 2 secondes
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -15,7 +18,17 @@ serve(async (req) => {
     const { jobId, audioPath } = await req.json();
     
     if (!jobId || !audioPath) {
-      throw new Error('Missing required parameters');
+      return new Response(
+        JSON.stringify({ 
+          error: true,
+          message: "Paramètres manquants",
+          details: "jobId et audioPath sont requis"
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
     }
 
     console.log(`Checking conversion status for job ID: ${jobId}`);
@@ -52,6 +65,47 @@ serve(async (req) => {
     console.log('Cloud Convert job status:', jobData.data.status);
     console.log('Tasks status:', jobData.data.tasks.map(t => `${t.operation}: ${t.status}`).join(', '));
 
+    // Gestion des erreurs spécifiques
+    if (jobData.data.status === 'error') {
+      const failedTask = jobData.data.tasks.find(t => t.status === 'error');
+      const errorCode = failedTask?.code || 'UNKNOWN_ERROR';
+      const errorMessage = failedTask?.message || 'Une erreur inconnue est survenue';
+      
+      let userMessage;
+      switch (errorCode) {
+        case 'DOWNLOAD_FAILED':
+          userMessage = "Échec du téléchargement du fichier source";
+          break;
+        case 'CONVERSION_FAILED':
+          userMessage = "Échec de la conversion du fichier";
+          break;
+        case 'UPLOAD_FAILED':
+          userMessage = "Échec de l'upload du fichier converti";
+          break;
+        case 'INVALID_FILE':
+          userMessage = "Format de fichier non supporté";
+          break;
+        default:
+          userMessage = errorMessage;
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          error: true,
+          status: 'error',
+          message: userMessage,
+          details: {
+            code: errorCode,
+            originalMessage: errorMessage
+          }
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500
+        }
+      );
+    }
+
     // Si le job est toujours en cours
     if (jobData.data.status === 'waiting' || jobData.data.status === 'processing') {
       // Calculer la progression
@@ -73,14 +127,6 @@ serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    }
-
-    // Si le job a échoué
-    if (jobData.data.status === 'error') {
-      const failedTask = jobData.data.tasks.find(t => t.status === 'error');
-      const errorMessage = failedTask?.message || jobData.data.message || 'Unknown error occurred';
-      console.error('Cloud Convert processing error:', errorMessage);
-      throw new Error(`Cloud Convert processing error: ${errorMessage}`);
     }
 
     // Si le job est terminé
@@ -183,7 +229,8 @@ serve(async (req) => {
     console.error('Error in check-conversion:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: true,
+        message: error.message,
         details: error.stack
       }),
       { 

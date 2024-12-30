@@ -15,7 +15,32 @@ serve(async (req) => {
     const { fileName } = await req.json();
     
     if (!fileName) {
-      throw new Error('Missing fileName parameter');
+      return new Response(
+        JSON.stringify({ 
+          error: true,
+          message: "Nom de fichier manquant",
+          details: null
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
+    }
+
+    const cloudConvertApiKey = Deno.env.get('CLOUDCONVERT_API_KEY');
+    if (!cloudConvertApiKey) {
+      return new Response(
+        JSON.stringify({ 
+          error: true,
+          message: "Clé API CloudConvert non configurée",
+          details: null
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500
+        }
+      );
     }
 
     console.log(`Starting conversion for file: ${fileName}`);
@@ -37,12 +62,12 @@ serve(async (req) => {
     const publicUrl = urlData.publicUrl;
     console.log('File public URL:', publicUrl);
 
-    // Create a job with Cloud Convert using the proper API format
+    // Create a job with Cloud Convert using optimized parameters
     console.log('Creating Cloud Convert job...');
     const response = await fetch('https://api.cloudconvert.com/v2/jobs', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('CLOUDCONVERT_API_KEY')}`,
+        'Authorization': `Bearer ${cloudConvertApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -57,10 +82,11 @@ serve(async (req) => {
             input: ["import"],
             output_format: "mp3",
             engine: "ffmpeg",
-            audio_codec: "mp3",
-            audio_bitrate: 192000, // Changed from "192k" to 192000 (integer in bits/s)
+            audio_codec: "libmp3lame",
+            audio_bitrate: 192000,
             audio_frequency: 44100,
-            audio_channels: 2
+            audio_channels: 2,
+            audio_quality: 0, // Meilleure qualité pour libmp3lame
           },
           "export": {
             operation: "export/url",
@@ -112,7 +138,8 @@ serve(async (req) => {
     console.error('Error in convert-video function:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: true,
+        message: error.message,
         details: error.stack 
       }),
       { 

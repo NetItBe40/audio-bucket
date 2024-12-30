@@ -58,7 +58,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
           .catch(reject);
       });
 
-      // Appeler l'Edge Function pour la conversion
+      // Démarrer la conversion
       const { data, error } = await supabase.functions.invoke('convert-video', {
         body: JSON.stringify({
           fileName,
@@ -68,13 +68,41 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
 
       if (error) throw error;
 
-      if (data?.audioPath) {
-        onUploadComplete(data.audioPath);
-        toast({
-          title: "Succès",
-          description: "Le fichier a été converti avec succès",
-        });
+      if (!data?.conversionId || !data?.audioPath) {
+        throw new Error('Invalid response from conversion service');
       }
+
+      // Polling pour vérifier l'état de la conversion
+      const checkConversion = async () => {
+        const { data: statusData, error: statusError } = await supabase.functions.invoke('check-conversion', {
+          body: JSON.stringify({
+            conversionId: data.conversionId,
+            audioPath: data.audioPath,
+          })
+        });
+
+        if (statusError) throw statusError;
+
+        if (statusData.status === 'completed') {
+          onUploadComplete(data.audioPath);
+          toast({
+            title: "Succès",
+            description: "Le fichier a été converti avec succès",
+          });
+          return;
+        }
+
+        if (statusData.status === 'error') {
+          throw new Error('Conversion failed');
+        }
+
+        // Continuer le polling toutes les 2 secondes
+        setTimeout(checkConversion, 2000);
+      };
+
+      // Démarrer le polling
+      checkConversion();
+
     } catch (error) {
       console.error('Erreur upload:', error);
       toast({

@@ -3,11 +3,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import DropZone from "./upload/DropZone";
 import UploadProgress from "./upload/UploadProgress";
-import { useChunkedUpload } from "@/hooks/useChunkedUpload";
+import { useVideoUpload } from "@/hooks/useVideoUpload";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
 
 const AudioUpload = () => {
   const { toast } = useToast();
@@ -41,13 +41,13 @@ const AudioUpload = () => {
     }
   };
 
-  const { uploadFile, isUploading, progress } = useChunkedUpload(handleUploadComplete);
+  const { uploadFile, isUploading, progress } = useVideoUpload(handleUploadComplete);
 
   const handleFileSelect = async (file: File) => {
-    if (file.size > MAX_FILE_SIZE && !file.type.startsWith('video/')) {
+    if (file.size > MAX_FILE_SIZE) {
       toast({
         title: "Fichier trop volumineux",
-        description: "La taille maximale autorisée est de 50MB",
+        description: "La taille maximale autorisée est de 1GB",
         variant: "destructive",
       });
       return;

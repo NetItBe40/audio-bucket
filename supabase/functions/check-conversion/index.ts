@@ -3,7 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -51,16 +50,16 @@ serve(async (req) => {
     }
 
     // Download the converted audio file
-    console.log('Downloading converted audio...');
+    console.log('Downloading converted audio from:', data.audio_url);
     const audioResponse = await fetch(data.audio_url);
     
     if (!audioResponse.ok) {
-      throw new Error('Failed to download converted audio');
+      throw new Error(`Failed to download converted audio: ${audioResponse.statusText}`);
     }
 
     const audioBlob = await audioResponse.blob();
     
-    // Upload to audio-recordings
+    // Initialize Supabase client
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -75,24 +74,34 @@ serve(async (req) => {
       });
 
     if (uploadError) {
+      console.error('Upload error:', uploadError);
       throw new Error(`Upload error: ${uploadError.message}`);
     }
 
     // Clean up the temporary video file
     console.log('Cleaning up temporary file...');
+    const tempFileName = audioPath.replace('converted-', '');
     const { error: deleteError } = await supabase.storage
       .from('temp-uploads')
-      .remove([audioPath.replace('converted-', '')]);
+      .remove([tempFileName]);
 
     if (deleteError) {
       console.error('Failed to delete temporary file:', deleteError);
       // Don't throw here, as the conversion was successful
     }
 
+    // Get the public URL for the uploaded audio file
+    const { data: { publicUrl } } = supabase.storage
+      .from('audio-recordings')
+      .getPublicUrl(audioPath);
+
+    console.log('Audio file uploaded successfully. Public URL:', publicUrl);
+
     return new Response(
       JSON.stringify({ 
         status: 'completed',
-        audioPath
+        audioPath,
+        publicUrl
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );

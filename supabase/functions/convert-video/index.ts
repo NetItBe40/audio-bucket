@@ -6,44 +6,39 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-async function getPublicUrl(supabase: any, filePath: string): Promise<string> {
-  const { data } = await supabase.storage
-    .from('temp-uploads')
-    .getPublicUrl(filePath);
-
-  if (!data?.publicUrl) {
-    throw new Error('Failed to get public URL');
-  }
-
-  return data.publicUrl;
-}
-
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { fileName, originalName } = await req.json();
+    const { fileName } = await req.json();
     
-    if (!fileName || !originalName) {
-      throw new Error('Missing required parameters');
+    if (!fileName) {
+      throw new Error('Missing fileName parameter');
     }
 
-    console.log(`Starting async processing for: ${fileName}`);
+    console.log(`Starting conversion for file: ${fileName}`);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // 1. Get the file URL from temp-uploads
-    console.log('Getting file from temp-uploads...');
-    const publicUrl = await getPublicUrl(supabase, fileName);
+    // Get the public URL for the uploaded file
+    const { data: { publicUrl } } = supabase.storage
+      .from('temp-uploads')
+      .getPublicUrl(fileName);
+
     console.log('File public URL:', publicUrl);
 
-    // 2. Start transcription with AssemblyAI using the public URL
+    // Verify file accessibility
+    const fileCheck = await fetch(publicUrl);
+    if (!fileCheck.ok) {
+      throw new Error(`File is not accessible: ${fileCheck.statusText}`);
+    }
+
+    // Start transcription with AssemblyAI using the public URL
     console.log('Starting AssemblyAI transcription...');
     const transcriptionResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
       method: 'POST',
@@ -53,7 +48,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         audio_url: publicUrl,
-        language_code: 'fr',
+        audio_start_from: 0,
+        audio_end_at: null,
       }),
     });
 
@@ -68,9 +64,8 @@ serve(async (req) => {
 
     // Create the target audio filename
     const timestamp = Date.now();
-    const audioFileName = `converted-${timestamp}-${originalName.replace(/\.[^/.]+$/, '')}.mp3`;
+    const audioFileName = `converted-${timestamp}-${fileName.replace(/\.[^/.]+$/, '')}.mp3`;
 
-    // Return the transcription ID and target filename
     return new Response(
       JSON.stringify({ 
         conversionId: transcriptionData.id,
@@ -86,7 +81,10 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error.stack 
+      }),
       { 
         headers: { 
           ...corsHeaders, 

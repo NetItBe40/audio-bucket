@@ -20,6 +20,25 @@ serve(async (req) => {
 
     console.log(`Checking conversion status for: ${conversionId}`);
 
+    // Check if the file exists and is accessible
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Get the public URL for the file
+    const { data: { publicUrl } } = supabase.storage
+      .from('temp-uploads')
+      .getPublicUrl(audioPath);
+
+    console.log('Public URL:', publicUrl);
+
+    // Verify file accessibility
+    const fileCheck = await fetch(publicUrl);
+    if (!fileCheck.ok) {
+      throw new Error(`File is not accessible: ${fileCheck.statusText}`);
+    }
+
     // Check conversion status with detailed error handling
     const response = await fetch(
       `https://api.assemblyai.com/v2/transcript/${conversionId}`,
@@ -56,17 +75,12 @@ serve(async (req) => {
       const audioBlob = await audioResponse.blob();
       
       // Upload to audio-recordings
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
-      
       console.log('Uploading to audio-recordings:', audioPath);
       const { error: uploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(audioPath, audioBlob, {
           contentType: 'audio/mpeg',
-          upsert: false
+          upsert: true
         });
 
       if (uploadError) {

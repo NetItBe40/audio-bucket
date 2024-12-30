@@ -37,7 +37,7 @@ serve(async (req) => {
     const publicUrl = urlData.publicUrl;
     console.log('File public URL:', publicUrl);
 
-    // Create a job with Cloud Convert
+    // Create a job with Cloud Convert using the proper API format
     console.log('Creating Cloud Convert job...');
     const response = await fetch('https://api.cloudconvert.com/v2/jobs', {
       method: 'POST',
@@ -46,38 +46,41 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        "tasks": {
-          "import-file": {
-            "operation": "import/url",
-            "url": publicUrl,
-            "filename": fileName
+        tasks: {
+          "import": {
+            operation: "import/url",
+            url: publicUrl,
+            filename: fileName
           },
-          "convert-audio": {
-            "operation": "convert",
-            "input": ["import-file"],
-            "output_format": "mp3",
-            "audio_codec": "mp3",
-            "audio_bitrate": "192k",
-            "audio_frequency": 44100
+          "convert": {
+            operation: "convert",
+            input: ["import"],
+            output_format: "mp3",
+            engine: "ffmpeg",
+            audio_codec: "mp3",
+            audio_bitrate: "192k",
+            audio_frequency: 44100,
+            audio_channels: 2
           },
-          "export-audio": {
-            "operation": "export/url",
-            "input": ["convert-audio"],
-            "inline": false,
-            "archive_multiple_files": false
+          "export": {
+            operation: "export/url",
+            input: ["convert"],
+            inline: false,
+            archive_multiple_files: false
           }
-        }
+        },
+        tag: "audio-conversion"
       })
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('Cloud Convert API error:', error);
-      throw new Error(`Cloud Convert API error: ${error}`);
+      const errorText = await response.text();
+      console.error('Cloud Convert API error:', errorText);
+      throw new Error(`Cloud Convert API error: ${errorText}`);
     }
 
     const jobData = await response.json();
-    console.log('Cloud Convert job response:', JSON.stringify(jobData, null, 2));
+    console.log('Cloud Convert job created:', JSON.stringify(jobData, null, 2));
 
     if (!jobData.data?.id) {
       console.error('Invalid job data received:', jobData);

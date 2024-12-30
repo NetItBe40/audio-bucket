@@ -32,7 +32,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Cloud Convert API error response:', errorText);
+      console.error('Cloud Convert API error:', errorText);
       throw new Error(`Cloud Convert API error: ${errorText}`);
     }
 
@@ -44,23 +44,31 @@ serve(async (req) => {
       throw new Error('Invalid job data received from Cloud Convert');
     }
 
+    // Vérifier si le job existe et a des tâches
+    if (!jobData.data.tasks || jobData.data.tasks.length === 0) {
+      throw new Error('No tasks found in job data');
+    }
+
     console.log('Cloud Convert job status:', jobData.data.status);
     console.log('Tasks status:', jobData.data.tasks.map(t => `${t.operation}: ${t.status}`).join(', '));
 
     // Si le job est toujours en cours
     if (jobData.data.status === 'waiting' || jobData.data.status === 'processing') {
-      // Calculer la progression en fonction des tâches terminées
+      // Calculer la progression
       const tasks = jobData.data.tasks;
+      const totalTasks = tasks.length;
       const completedTasks = tasks.filter(t => t.status === 'finished').length;
-      const progress = Math.round((completedTasks / tasks.length) * 100);
+      const processingTasks = tasks.filter(t => t.status === 'processing').length;
+      const progress = Math.round(((completedTasks + (processingTasks * 0.5)) / totalTasks) * 100);
       
       return new Response(
         JSON.stringify({ 
           status: jobData.data.status,
           progress,
-          tasks: jobData.data.tasks.map(t => ({
+          tasks: tasks.map(t => ({
             operation: t.operation,
-            status: t.status
+            status: t.status,
+            percent: t.percent
           }))
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -69,15 +77,16 @@ serve(async (req) => {
 
     // Si le job a échoué
     if (jobData.data.status === 'error') {
-      const errorMessage = jobData.data.message || jobData.data.error?.message || 'Unknown error occurred';
+      const failedTask = jobData.data.tasks.find(t => t.status === 'error');
+      const errorMessage = failedTask?.message || jobData.data.message || 'Unknown error occurred';
       console.error('Cloud Convert processing error:', errorMessage);
       throw new Error(`Cloud Convert processing error: ${errorMessage}`);
     }
 
-    // Si le job est terminé, on vérifie que toutes les tâches sont bien terminées
+    // Si le job est terminé
     if (jobData.data.status === 'finished') {
-      const tasks = jobData.data.tasks;
-      const allTasksFinished = tasks.every(t => t.status === 'finished');
+      // Vérifier que toutes les tâches sont terminées
+      const allTasksFinished = jobData.data.tasks.every(t => t.status === 'finished');
       
       if (!allTasksFinished) {
         console.log('Job marked as finished but some tasks are still processing');
@@ -85,7 +94,7 @@ serve(async (req) => {
           JSON.stringify({ 
             status: 'processing',
             progress: 90,
-            tasks: tasks.map(t => ({
+            tasks: jobData.data.tasks.map(t => ({
               operation: t.operation,
               status: t.status
             }))
@@ -102,10 +111,11 @@ serve(async (req) => {
         throw new Error('No export URL found in completed job');
       }
 
-      console.log('Downloading converted audio from:', exportTask.result.files[0].url);
+      const exportUrl = exportTask.result.files[0].url;
+      console.log('Downloading converted audio from:', exportUrl);
       
       // Télécharger le fichier converti
-      const audioResponse = await fetch(exportTask.result.files[0].url);
+      const audioResponse = await fetch(exportUrl);
       
       if (!audioResponse.ok) {
         console.error('Audio download failed:', audioResponse.statusText);
@@ -128,7 +138,7 @@ serve(async (req) => {
       console.log('Uploading to audio-recordings:', audioPath);
       
       // Upload du fichier converti
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(audioPath, audioBlob, {
           contentType: 'audio/mpeg',
@@ -137,20 +147,10 @@ serve(async (req) => {
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
-        throw new Error(`Upload error: ${uploadError.message}`);
+        throw uploadError;
       }
 
       console.log('Audio file uploaded successfully');
-
-      // Mise à jour de la taille du fichier dans la base de données
-      const { error: updateError } = await supabase
-        .from('recordings')
-        .update({ file_size: audioBlob.size })
-        .eq('file_path', audioPath);
-
-      if (updateError) {
-        console.error('Failed to update file size:', updateError);
-      }
 
       // Nettoyage du fichier temporaire
       const tempFileName = audioPath.split('/').pop()?.replace('converted-', '') || '';
@@ -168,6 +168,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           status: 'completed',
+          progress: 100,
           audioPath,
           size: audioBlob.size
         }),

@@ -19,64 +19,70 @@ serve(async (req) => {
       throw new Error('Missing required parameters')
     }
 
+    console.log(`Processing file: ${fileName}, original name: ${originalName}`)
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Créer un dossier temporaire unique
-    const tempDir = Deno.makeTempDirSync()
-    const inputPath = `${tempDir}/input.mp4`
-    const outputPath = `${tempDir}/output.mp3`
-
-    // Télécharger le fichier depuis temp-uploads
+    // Download the file from temp-uploads
     const { data: fileData, error: downloadError } = await supabase.storage
       .from('temp-uploads')
       .download(fileName)
 
-    if (downloadError) throw downloadError
+    if (downloadError) {
+      console.error('Download error:', downloadError)
+      throw downloadError
+    }
 
-    // Écrire le fichier téléchargé sur le disque
-    await Deno.writeFile(inputPath, new Uint8Array(await fileData.arrayBuffer()))
-
-    // Convertir en MP3 avec FFmpeg
+    // Convert to audio buffer using FFmpeg
     const ffmpeg = new Deno.Command("ffmpeg", {
       args: [
-        "-i", inputPath,
-        "-vn",
+        "-i", "pipe:0",  // Read from stdin
+        "-f", "mp3",     // Force MP3 format
         "-acodec", "libmp3lame",
         "-ab", "128k",
         "-ar", "44100",
-        outputPath
+        "-vn",          // No video
+        "pipe:1"        // Output to stdout
       ],
+      stdin: "piped",
+      stdout: "piped",
     })
 
-    const { code, stderr } = await ffmpeg.output()
+    const process = ffmpeg.spawn()
     
-    if (code !== 0) {
-      throw new Error(`FFmpeg failed with error: ${new TextDecoder().decode(stderr)}`)
+    // Write input file to FFmpeg's stdin
+    const writer = process.stdin.getWriter()
+    await writer.write(new Uint8Array(await fileData.arrayBuffer()))
+    await writer.close()
+
+    // Read the output
+    const output = await process.output()
+    
+    if (output.code !== 0) {
+      console.error('FFmpeg error:', new TextDecoder().decode(output.stderr))
+      throw new Error('FFmpeg conversion failed')
     }
 
-    // Lire le fichier MP3 généré
-    const audioData = await Deno.readFile(outputPath)
-
-    // Upload vers audio-recordings
+    // Upload to audio-recordings
     const timestamp = Date.now()
     const audioFileName = `converted-${timestamp}-${originalName.replace(/\.[^/.]+$/, '')}.mp3`
     
     const { error: uploadError } = await supabase.storage
       .from('audio-recordings')
-      .upload(audioFileName, audioData, {
+      .upload(audioFileName, output.stdout, {
         contentType: 'audio/mpeg',
         upsert: false
       })
 
-    if (uploadError) throw uploadError
+    if (uploadError) {
+      console.error('Upload error:', uploadError)
+      throw uploadError
+    }
 
-    // Nettoyer les fichiers temporaires
-    await Deno.remove(tempDir, { recursive: true })
-    
-    // Supprimer le fichier original de temp-uploads
+    // Clean up the original file from temp-uploads
     await supabase.storage
       .from('temp-uploads')
       .remove([fileName])

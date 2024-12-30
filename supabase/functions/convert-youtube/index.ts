@@ -20,6 +20,12 @@ serve(async (req) => {
 
   try {
     const { youtubeUrl } = await req.json();
+    
+    // Validate YouTube URL
+    if (!youtubeUrl || !youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be')) {
+      throw new Error('Invalid YouTube URL');
+    }
+    
     console.log('Processing YouTube URL:', youtubeUrl);
 
     // Initiate conversion
@@ -34,6 +40,11 @@ serve(async (req) => {
     };
 
     const response = await fetch(convertUrl, options);
+    if (!response.ok) {
+      console.error('RapidAPI initial response error:', response.status, await response.text());
+      throw new Error(`RapidAPI returned status ${response.status}`);
+    }
+
     const result = await response.json();
     console.log('Initial conversion result:', result);
 
@@ -50,6 +61,11 @@ serve(async (req) => {
           headers: options.headers
         });
         
+        if (!statusResponse.ok) {
+          console.error('Status check failed:', statusResponse.status, await statusResponse.text());
+          throw new Error(`Status check failed with status ${statusResponse.status}`);
+        }
+
         const statusResult = await statusResponse.json();
         console.log(`Status check attempt ${attempts + 1}:`, statusResult);
 
@@ -57,6 +73,12 @@ serve(async (req) => {
           // Download the file
           console.log('Downloading file from:', statusResult.downloadUrl);
           const fileResponse = await fetch(statusResult.downloadUrl);
+          
+          if (!fileResponse.ok) {
+            console.error('File download failed:', fileResponse.status, await fileResponse.text());
+            throw new Error('Failed to download the converted file');
+          }
+
           const fileBlob = await fileResponse.blob();
           
           // Return both the file data and metadata
@@ -77,24 +99,26 @@ serve(async (req) => {
         }
 
         if (statusResult.status === 'EXPIRED' || statusResult.status === 'CONVERSION_ERROR') {
+          console.error('Conversion failed with status:', statusResult.status);
           throw new Error(`Conversion failed: ${statusResult.status}`);
         }
 
         attempts++;
       }
 
-      throw new Error('Conversion timeout');
+      throw new Error('Conversion timeout: process took too long');
+    } else {
+      console.error('Unexpected initial status:', result.status);
+      throw new Error(`Unexpected conversion status: ${result.status}`);
     }
 
-    return new Response(
-      JSON.stringify(result),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error details:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error.stack
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500

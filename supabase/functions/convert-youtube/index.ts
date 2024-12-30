@@ -15,10 +15,7 @@ serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, {
-      headers: {
-        ...corsHeaders,
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      },
+      headers: corsHeaders,
     });
   }
 
@@ -59,6 +56,21 @@ serve(async (req) => {
         statusText: response.statusText,
         body: errorText
       });
+
+      // Check for rate limit error
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Rate limit exceeded',
+            details: 'The monthly quota for YouTube conversions has been exceeded. Please try again next month or contact support.',
+            isRateLimit: true
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 429
+          }
+        );
+      }
       
       return new Response(
         JSON.stringify({ 

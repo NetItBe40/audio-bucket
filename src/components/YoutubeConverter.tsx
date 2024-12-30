@@ -33,7 +33,16 @@ const YoutubeConverter = () => {
       
       if (!data?.downloadUrl) {
         console.error('Invalid response:', data);
-        throw new Error(data?.error || 'No download URL received');
+        if (data?.isRateLimit) {
+          toast({
+            title: "Service temporairement indisponible",
+            description: "Le quota mensuel de conversions YouTube a été atteint. Veuillez réessayer le mois prochain ou contacter le support.",
+            variant: "destructive",
+          });
+        } else {
+          throw new Error(data?.error || 'No download URL received');
+        }
+        return;
       }
 
       console.log('Conversion successful:', data);

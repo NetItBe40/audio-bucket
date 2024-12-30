@@ -31,14 +31,15 @@ serve(async (req) => {
     
     console.log('Processing YouTube URL:', youtubeUrl);
 
-    const convertUrl = `https://youtube-to-mp315.p.rapidapi.com/download?url=${encodeURIComponent(youtubeUrl)}&format=mp3&quality=0`;
+    const convertUrl = 'https://youtube-to-mp315.p.rapidapi.com/download';
     const options = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         'X-RapidAPI-Key': rapidApiKey,
         'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
-      }
+      },
+      body: JSON.stringify({ url: youtubeUrl, format: 'mp3', quality: '0' })
     };
 
     const response = await fetch(convertUrl, options);

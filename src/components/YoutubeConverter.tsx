@@ -69,11 +69,12 @@ const YoutubeConverter = () => {
       if (!response.ok) throw new Error('Failed to download the file');
       
       const blob = await response.blob();
+      const file = new File([blob], fileName, { type: 'audio/mpeg' });
 
       console.log('Uploading file to Supabase Storage:', fileName);
       const { error: uploadError } = await supabase.storage
         .from('audio-recordings')
-        .upload(fileName, blob, {
+        .upload(fileName, file, {
           contentType: 'audio/mpeg'
         });
 
@@ -84,7 +85,7 @@ const YoutubeConverter = () => {
         .insert({
           title,
           file_path: fileName,
-          file_size: blob.size,
+          file_size: file.size,
           user_id: userData.user.id,
         });
 

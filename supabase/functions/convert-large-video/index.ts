@@ -81,6 +81,7 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       } catch (error) {
+        console.error('Conversion error:', error)
         return handleError(error)
       }
     }
@@ -95,6 +96,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
+    console.error('Request error:', error)
     return handleError(error)
   }
 })

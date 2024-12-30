@@ -17,14 +17,16 @@ async function startConversion(videoId: string, rapidApiKey: string) {
   const url = `https://youtube-to-mp315.p.rapidapi.com/dl?id=${videoId}`;
   console.log('Making request to:', url);
   
-  const response = await fetch(url, {
+  const options = {
     method: 'GET',
     headers: {
       'X-RapidAPI-Key': rapidApiKey,
       'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
     }
-  });
+  };
 
+  const response = await fetch(url, options);
+  
   if (!response.ok) {
     console.error('RapidAPI error:', {
       status: response.status,
@@ -33,9 +35,17 @@ async function startConversion(videoId: string, rapidApiKey: string) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json();
-  console.log('API Response:', data);
-  return data;
+  const result = await response.json();
+  console.log('API Response:', result);
+
+  if (result.status === 'ok' && result.link) {
+    return {
+      downloadUrl: result.link,
+      title: result.title || 'YouTube conversion'
+    };
+  } else {
+    throw new Error(result.msg || 'Conversion failed');
+  }
 }
 
 serve(async (req) => {
@@ -63,7 +73,6 @@ serve(async (req) => {
       throw new Error('RapidAPI key not configured');
     }
 
-    // Just start the conversion and return the raw response
     const conversionData = await startConversion(videoId, rapidApiKey);
     
     return new Response(

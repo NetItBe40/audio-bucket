@@ -6,32 +6,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-async function uploadToAssemblyAI(file: ArrayBuffer) {
-  console.log('Starting AssemblyAI upload...');
-  try {
-    const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
-      method: 'POST',
-      headers: {
-        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
-        'Content-Type': 'application/octet-stream',
-        'Transfer-Encoding': 'chunked'
-      },
-      body: file
-    });
+async function getPublicUrl(supabase: any, filePath: string): Promise<string> {
+  const { data } = await supabase.storage
+    .from('temp-uploads')
+    .getPublicUrl(filePath);
 
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error('AssemblyAI upload error:', errorText);
-      throw new Error(`AssemblyAI upload failed: ${errorText}`);
-    }
-
-    const { upload_url } = await uploadResponse.json();
-    console.log('File uploaded to AssemblyAI:', upload_url);
-    return upload_url;
-  } catch (error) {
-    console.error('Upload error:', error);
-    throw new Error(`AssemblyAI upload error: ${error.message}`);
+  if (!data?.publicUrl) {
+    throw new Error('Failed to get public URL');
   }
+
+  return data.publicUrl;
 }
 
 serve(async (req) => {
@@ -54,54 +38,42 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Download the file from temp-uploads
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('temp-uploads')
-      .createSignedUrl(fileName, 3600);
+    // 1. Get the file URL from temp-uploads
+    console.log('Getting file from temp-uploads...');
+    const publicUrl = await getPublicUrl(supabase, fileName);
+    console.log('File public URL:', publicUrl);
 
-    if (downloadError) {
-      console.error('Download error:', downloadError);
-      throw downloadError;
-    }
-
-    // Create a conversion record in the database
-    const timestamp = Date.now();
-    const audioFileName = `converted-${timestamp}-${originalName.replace(/\.[^/.]+$/, '')}.mp3`;
-    
-    // Download and upload to AssemblyAI
-    const fileResponse = await fetch(fileData.signedUrl);
-    if (!fileResponse.ok) {
-      throw new Error('Failed to download file from temp-uploads');
-    }
-    const fileBuffer = await fileResponse.arrayBuffer();
-
-    // Upload to AssemblyAI with improved error handling
-    const uploadUrl = await uploadToAssemblyAI(fileBuffer);
-
-    // Start conversion process
-    const conversionResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
+    // 2. Start transcription with AssemblyAI using the public URL
+    console.log('Starting AssemblyAI transcription...');
+    const transcriptionResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
       method: 'POST',
       headers: {
         'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        audio_url: uploadUrl,
+        audio_url: publicUrl,
         language_code: 'fr',
       }),
     });
 
-    if (!conversionResponse.ok) {
-      throw new Error('Failed to start conversion');
+    if (!transcriptionResponse.ok) {
+      const error = await transcriptionResponse.text();
+      console.error('AssemblyAI transcription error:', error);
+      throw new Error(`Failed to start transcription: ${error}`);
     }
 
-    const conversionData = await conversionResponse.json();
-    console.log('Conversion started:', conversionData);
+    const transcriptionData = await transcriptionResponse.json();
+    console.log('Transcription started:', transcriptionData);
 
-    // Return the conversion ID and target filename with CORS headers
+    // Create the target audio filename
+    const timestamp = Date.now();
+    const audioFileName = `converted-${timestamp}-${originalName.replace(/\.[^/.]+$/, '')}.mp3`;
+
+    // Return the transcription ID and target filename
     return new Response(
       JSON.stringify({ 
-        conversionId: conversionData.id,
+        conversionId: transcriptionData.id,
         audioPath: audioFileName
       }),
       { 

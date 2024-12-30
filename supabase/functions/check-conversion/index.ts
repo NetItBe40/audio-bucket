@@ -18,7 +18,7 @@ serve(async (req) => {
       throw new Error('Missing required parameters');
     }
 
-    console.log(`Checking conversion status for: ${conversionId}`);
+    console.log(`Starting conversion check for ID: ${conversionId}`);
     console.log(`Target audio path: ${audioPath}`);
 
     // Check conversion status with detailed error handling
@@ -38,7 +38,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log('Conversion status:', data.status);
+    console.log('AssemblyAI status:', data.status);
 
     if (data.status === 'error') {
       console.error('AssemblyAI processing error:', data.error);
@@ -71,11 +71,11 @@ serve(async (req) => {
     );
     
     console.log('Uploading to audio-recordings:', audioPath);
-    const { error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('audio-recordings')
       .upload(audioPath, audioBlob, {
         contentType: 'audio/mpeg',
-        upsert: true
+        upsert: true // Allow overwriting if file exists
       });
 
     if (uploadError) {
@@ -83,18 +83,20 @@ serve(async (req) => {
       throw new Error(`Upload error: ${uploadError.message}`);
     }
 
-    console.log('Audio file uploaded successfully');
+    console.log('Audio file uploaded successfully:', uploadData);
 
     // Clean up the temporary video file
-    console.log('Cleaning up temporary file...');
-    const tempFileName = audioPath.replace('converted-', '');
-    const { error: deleteError } = await supabase.storage
-      .from('temp-uploads')
-      .remove([tempFileName]);
+    const tempFileName = audioPath.split('/').pop()?.replace('converted-', '') || '';
+    if (tempFileName) {
+      console.log('Cleaning up temporary file:', tempFileName);
+      const { error: deleteError } = await supabase.storage
+        .from('temp-uploads')
+        .remove([tempFileName]);
 
-    if (deleteError) {
-      console.error('Failed to delete temporary file:', deleteError);
-      // Don't throw here, as the conversion was successful
+      if (deleteError) {
+        console.error('Failed to delete temporary file:', deleteError);
+        // Don't throw here, as the conversion was successful
+      }
     }
 
     // Get the public URL for the uploaded audio file
@@ -102,7 +104,7 @@ serve(async (req) => {
       .from('audio-recordings')
       .getPublicUrl(audioPath);
 
-    console.log('Audio file uploaded successfully. Public URL:', publicUrl);
+    console.log('Audio file processing completed. Public URL:', publicUrl);
 
     return new Response(
       JSON.stringify({ 
@@ -113,7 +115,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error in check-conversion:', error);
     return new Response(
       JSON.stringify({ 
         error: error.message,

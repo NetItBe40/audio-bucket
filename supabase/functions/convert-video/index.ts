@@ -36,44 +36,15 @@ serve(async (req) => {
       throw downloadError
     }
 
-    // Convert to audio buffer using FFmpeg
-    const ffmpeg = new Deno.Command("ffmpeg", {
-      args: [
-        "-i", "pipe:0",  // Read from stdin
-        "-f", "mp3",     // Force MP3 format
-        "-acodec", "libmp3lame",
-        "-ab", "128k",
-        "-ar", "44100",
-        "-vn",          // No video
-        "pipe:1"        // Output to stdout
-      ],
-      stdin: "piped",
-      stdout: "piped",
-    })
-
-    const process = ffmpeg.spawn()
-    
-    // Write input file to FFmpeg's stdin
-    const writer = process.stdin.getWriter()
-    await writer.write(new Uint8Array(await fileData.arrayBuffer()))
-    await writer.close()
-
-    // Read the output
-    const output = await process.output()
-    
-    if (output.code !== 0) {
-      console.error('FFmpeg error:', new TextDecoder().decode(output.stderr))
-      throw new Error('FFmpeg conversion failed')
-    }
-
-    // Upload to audio-recordings
+    // For now, we'll just move the file to audio-recordings
+    // In a real implementation, you would send this to a conversion service
     const timestamp = Date.now()
-    const audioFileName = `converted-${timestamp}-${originalName.replace(/\.[^/.]+$/, '')}.mp3`
+    const audioFileName = `converted-${timestamp}-${originalName}`
     
     const { error: uploadError } = await supabase.storage
       .from('audio-recordings')
-      .upload(audioFileName, output.stdout, {
-        contentType: 'audio/mpeg',
+      .upload(audioFileName, fileData, {
+        contentType: 'video/mp4', // Keep original content type for now
         upsert: false
       })
 

@@ -10,7 +10,10 @@ export async function uploadToStorage(audioBlob: Blob, audioPath: string, maxRet
   
   for (let i = 0; i < maxRetries; i++) {
     try {
-      console.log(`Upload attempt ${i + 1} for ${audioPath}`);
+      console.log(`Upload attempt ${i + 1} for ${audioPath}`, {
+        blobSize: audioBlob.size,
+        blobType: audioBlob.type
+      });
       
       const { error: uploadError } = await supabase.storage
         .from('audio-recordings')
@@ -28,10 +31,12 @@ export async function uploadToStorage(audioBlob: Blob, audioPath: string, maxRet
           .download(audioPath);
           
         if (fileError) {
+          console.error('Failed to verify uploaded file:', fileError);
           throw new Error(`Failed to verify uploaded file: ${fileError.message}`);
         }
         
         if (!fileData || fileData.size === 0) {
+          console.error('Uploaded file verification failed: file is empty');
           throw new Error('Uploaded file verification failed: file is empty');
         }
 
@@ -47,7 +52,9 @@ export async function uploadToStorage(audioBlob: Blob, audioPath: string, maxRet
     }
     
     if (i < maxRetries - 1) {
-      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      const delay = 1000 * (i + 1);
+      console.log(`Waiting ${delay}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 
@@ -57,8 +64,14 @@ export async function uploadToStorage(audioBlob: Blob, audioPath: string, maxRet
 export async function cleanupTempFile(supabase: any, tempFileName: string) {
   if (tempFileName) {
     console.log('Cleaning up temporary file:', tempFileName);
-    await supabase.storage
+    const { error } = await supabase.storage
       .from('temp-uploads')
       .remove([tempFileName]);
+      
+    if (error) {
+      console.error('Error cleaning up temp file:', error);
+    } else {
+      console.log('Temp file cleaned up successfully');
+    }
   }
 }

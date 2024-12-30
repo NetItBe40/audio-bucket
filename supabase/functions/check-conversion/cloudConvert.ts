@@ -28,23 +28,51 @@ export async function checkCloudConvertJob(jobId: string): Promise<CloudConvertJ
 }
 
 export async function downloadConvertedFile(url: string): Promise<Blob> {
-  console.log('Downloading converted audio from:', url);
+  console.log('Starting download of converted audio from:', url);
   
-  const audioResponse = await fetch(url);
-  
-  if (!audioResponse.ok) {
-    console.error('Audio download failed:', audioResponse.statusText);
-    throw new Error(`Failed to download converted audio: ${audioResponse.statusText}`);
-  }
+  try {
+    const audioResponse = await fetch(url);
+    
+    if (!audioResponse.ok) {
+      console.error('Audio download failed:', {
+        status: audioResponse.status,
+        statusText: audioResponse.statusText
+      });
+      throw new Error(`Failed to download converted audio: ${audioResponse.statusText}`);
+    }
 
-  const audioBlob = await audioResponse.blob();
-  console.log('Audio file downloaded, size:', audioBlob.size);
-  
-  if (audioBlob.size === 0) {
-    throw new Error('Downloaded audio file is empty');
-  }
+    // Log response headers
+    const headers = Object.fromEntries(audioResponse.headers.entries());
+    console.log('Audio response headers:', headers);
 
-  return audioBlob;
+    const contentLength = audioResponse.headers.get('content-length');
+    console.log('Content length from headers:', contentLength);
+
+    const audioBlob = await audioResponse.blob();
+    console.log('Audio blob received:', {
+      size: audioBlob.size,
+      type: audioBlob.type
+    });
+    
+    if (audioBlob.size === 0) {
+      console.error('Downloaded audio file is empty');
+      // Log the response body as text for debugging
+      const responseText = await audioResponse.clone().text();
+      console.error('Response body:', responseText);
+      throw new Error('Downloaded audio file is empty');
+    }
+
+    // Additional validation
+    if (!audioBlob.type.startsWith('audio/')) {
+      console.error('Invalid file type received:', audioBlob.type);
+      throw new Error(`Invalid file type received: ${audioBlob.type}`);
+    }
+
+    return audioBlob;
+  } catch (error) {
+    console.error('Error downloading converted file:', error);
+    throw error;
+  }
 }
 
 export function getTasksStatus(tasks: CloudConvertTask[]): TaskStatus[] {

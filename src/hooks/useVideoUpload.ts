@@ -70,9 +70,13 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
         })
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Conversion error:', error);
+        throw error;
+      }
 
       if (!data?.conversionId || !data?.audioPath) {
+        console.error('Invalid response from conversion service:', data);
         throw new Error('Invalid response from conversion service');
       }
 
@@ -83,7 +87,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
         try {
           const { data: statusData, error: statusError } = await supabase.functions.invoke('check-conversion', {
             body: JSON.stringify({
-              conversionId: data.conversionId,
+              jobId: data.conversionId,
               audioPath: data.audioPath,
             })
           });

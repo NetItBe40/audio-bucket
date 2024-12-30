@@ -49,7 +49,8 @@ serve(async (req) => {
         "tasks": {
           "import-file": {
             "operation": "import/url",
-            "url": publicUrl
+            "url": publicUrl,
+            "filename": fileName
           },
           "convert-audio": {
             "operation": "convert",
@@ -65,8 +66,7 @@ serve(async (req) => {
             "inline": false,
             "archive_multiple_files": false
           }
-        },
-        "tag": "video-to-audio"
+        }
       })
     });
 
@@ -77,15 +77,25 @@ serve(async (req) => {
     }
 
     const jobData = await response.json();
-    console.log('Cloud Convert job created:', jobData);
+    console.log('Cloud Convert job response:', JSON.stringify(jobData, null, 2));
+
+    if (!jobData.data?.id) {
+      console.error('Invalid job data received:', jobData);
+      throw new Error('Invalid job data received from Cloud Convert');
+    }
 
     // Create the target audio filename
     const timestamp = Date.now();
     const audioFileName = `converted-${timestamp}-${fileName.replace(/\s+/g, '_').replace(/\.[^/.]+$/, '')}.mp3`;
 
+    console.log('Job created successfully:', {
+      jobId: jobData.data.id,
+      audioPath: audioFileName
+    });
+
     return new Response(
       JSON.stringify({ 
-        jobId: jobData.data.id,
+        conversionId: jobData.data.id,
         audioPath: audioFileName,
       }),
       { 
@@ -96,7 +106,7 @@ serve(async (req) => {
       },
     );
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error in convert-video function:', error);
     return new Response(
       JSON.stringify({ 
         error: error.message,

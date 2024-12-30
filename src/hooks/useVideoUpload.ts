@@ -82,7 +82,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
 
       console.log('Conversion started:', { conversionId: data.conversionId, audioPath: data.audioPath });
 
-      // Polling to check conversion status
+      // Polling pour vérifier l'état de la conversion
       const checkConversion = async () => {
         try {
           const { data: statusData, error: statusError } = await supabase.functions.invoke('check-conversion', {
@@ -98,22 +98,31 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
             throw new Error(`Conversion error: ${statusData.error}`);
           }
 
+          // Mise à jour de la progression
+          if (statusData.progress) {
+            setProgress(statusData.progress);
+          }
+
+          // Log des statuts des tâches si disponible
+          if (statusData.tasks) {
+            console.log('Tasks status:', statusData.tasks.map((t: any) => 
+              `${t.operation}: ${t.status}`
+            ).join(', '));
+          }
+
           if (statusData.status === 'completed') {
             onUploadComplete(data.audioPath);
             toast({
               title: "Succès",
               description: "Le fichier a été converti avec succès",
             });
+            setIsUploading(false);
+            setProgress(100);
             return;
           }
 
           if (statusData.status === 'error') {
             throw new Error(`Conversion failed: ${statusData.details || 'Unknown error'}`);
-          }
-
-          // Update progress if available
-          if (statusData.progress) {
-            setProgress(statusData.progress);
           }
 
           // Continue polling every 2 seconds

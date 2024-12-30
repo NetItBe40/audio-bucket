@@ -38,24 +38,55 @@ serve(async (req) => {
 
     const jobData = await response.json();
     console.log('Cloud Convert job status:', jobData.data.status);
+    console.log('Tasks status:', jobData.data.tasks.map(t => `${t.operation}: ${t.status}`).join(', '));
 
-    // If the job is still running, return the current status
+    // Si le job est toujours en cours
     if (jobData.data.status === 'waiting' || jobData.data.status === 'processing') {
+      // Calculer la progression en fonction des tâches terminées
+      const tasks = jobData.data.tasks;
+      const completedTasks = tasks.filter(t => t.status === 'finished').length;
+      const progress = Math.round((completedTasks / tasks.length) * 100);
+      
       return new Response(
-        JSON.stringify({ status: jobData.data.status }),
+        JSON.stringify({ 
+          status: jobData.data.status,
+          progress,
+          tasks: jobData.data.tasks.map(t => ({
+            operation: t.operation,
+            status: t.status
+          }))
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // If the job failed
+    // Si le job a échoué
     if (jobData.data.status === 'error') {
       console.error('Cloud Convert processing error:', jobData.data.message);
       throw new Error(`Cloud Convert processing error: ${jobData.data.message}`);
     }
 
-    // If the job is completed
+    // Si le job est terminé, on vérifie que toutes les tâches sont bien terminées
     if (jobData.data.status === 'finished') {
-      // Find the export task
+      const tasks = jobData.data.tasks;
+      const allTasksFinished = tasks.every(t => t.status === 'finished');
+      
+      if (!allTasksFinished) {
+        console.log('Job marked as finished but some tasks are still processing');
+        return new Response(
+          JSON.stringify({ 
+            status: 'processing',
+            progress: 90,
+            tasks: tasks.map(t => ({
+              operation: t.operation,
+              status: t.status
+            }))
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Trouver la tâche d'export
       const exportTask = jobData.data.tasks.find(task => task.operation === 'export/url');
       
       if (!exportTask || !exportTask.result?.files?.[0]?.url) {
@@ -64,7 +95,7 @@ serve(async (req) => {
 
       console.log('Downloading converted audio from:', exportTask.result.files[0].url);
       
-      // Download the converted file
+      // Télécharger le fichier converti
       const audioResponse = await fetch(exportTask.result.files[0].url);
       
       if (!audioResponse.ok) {
@@ -79,7 +110,7 @@ serve(async (req) => {
         throw new Error('Downloaded audio file is empty');
       }
 
-      // Initialize Supabase client
+      // Initialiser le client Supabase
       const supabase = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -87,7 +118,7 @@ serve(async (req) => {
       
       console.log('Uploading to audio-recordings:', audioPath);
       
-      // Upload the converted file
+      // Upload du fichier converti
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(audioPath, audioBlob, {
@@ -102,7 +133,7 @@ serve(async (req) => {
 
       console.log('Audio file uploaded successfully');
 
-      // Update the file size in the database
+      // Mise à jour de la taille du fichier dans la base de données
       const { error: updateError } = await supabase
         .from('recordings')
         .update({ file_size: audioBlob.size })
@@ -112,7 +143,7 @@ serve(async (req) => {
         console.error('Failed to update file size:', updateError);
       }
 
-      // Clean up the temporary file
+      // Nettoyage du fichier temporaire
       const tempFileName = audioPath.split('/').pop()?.replace('converted-', '') || '';
       if (tempFileName) {
         console.log('Cleaning up temporary file:', tempFileName);
@@ -135,7 +166,7 @@ serve(async (req) => {
       );
     }
 
-    // If we get here, there's an unexpected status
+    // Si on arrive ici, c'est qu'il y a un statut inattendu
     throw new Error(`Unexpected job status: ${jobData.data.status}`);
 
   } catch (error) {

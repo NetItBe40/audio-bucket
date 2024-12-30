@@ -1,8 +1,9 @@
-import { serve } from "std/http/server.ts";
-import { createClient } from "@supabase/supabase-js";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -26,16 +27,21 @@ serve(async (req) => {
     );
 
     // Get the public URL for the uploaded file
-    const { data: { publicUrl } } = supabase.storage
+    const { data: urlData } = supabase.storage
       .from('temp-uploads')
       .getPublicUrl(fileName);
 
+    if (!urlData?.publicUrl) {
+      throw new Error('Failed to get public URL for file');
+    }
+
+    const publicUrl = urlData.publicUrl;
     console.log('File public URL:', publicUrl);
 
     // Verify file accessibility
     const fileCheck = await fetch(publicUrl);
     if (!fileCheck.ok) {
-      throw new Error(`File is not accessible: ${fileCheck.statusText}`);
+      throw new Error(`File is not accessible (${fileCheck.status}): ${fileCheck.statusText}`);
     }
 
     // Start transcription with AssemblyAI using the public URL
@@ -55,8 +61,7 @@ serve(async (req) => {
 
     if (!transcriptionResponse.ok) {
       const error = await transcriptionResponse.text();
-      console.error('AssemblyAI transcription error:', error);
-      throw new Error(`Failed to start transcription: ${error}`);
+      throw new Error(`AssemblyAI API error: ${error}`);
     }
 
     const transcriptionData = await transcriptionResponse.json();
@@ -69,14 +74,14 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         conversionId: transcriptionData.id,
-        audioPath: audioFileName
+        audioPath: audioFileName,
       }),
       { 
         headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
-      }
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      },
     );
   } catch (error) {
     console.error('Error:', error);
@@ -87,11 +92,11 @@ serve(async (req) => {
       }),
       { 
         headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        }, 
-        status: 500 
-      }
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+        status: 500,
+      },
     );
   }
 });

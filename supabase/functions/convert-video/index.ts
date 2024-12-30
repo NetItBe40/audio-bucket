@@ -3,7 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -38,42 +37,55 @@ serve(async (req) => {
     const publicUrl = urlData.publicUrl;
     console.log('File public URL:', publicUrl);
 
-    // Verify file accessibility
-    const fileCheck = await fetch(publicUrl);
-    if (!fileCheck.ok) {
-      throw new Error(`File is not accessible (${fileCheck.status}): ${fileCheck.statusText}`);
-    }
-
-    // Start transcription with AssemblyAI using the public URL
-    console.log('Starting AssemblyAI transcription...');
-    const transcriptionResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
+    // Create a job with Cloud Convert
+    console.log('Creating Cloud Convert job...');
+    const response = await fetch('https://api.cloudconvert.com/v2/jobs', {
       method: 'POST',
       headers: {
-        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
+        'Authorization': `Bearer ${Deno.env.get('CLOUDCONVERT_API_KEY')}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        audio_url: publicUrl,
-        audio_start_from: 0,
-        audio_end_at: null,
-      }),
+        "tasks": {
+          "import-file": {
+            "operation": "import/url",
+            "url": publicUrl
+          },
+          "convert-audio": {
+            "operation": "convert",
+            "input": ["import-file"],
+            "output_format": "mp3",
+            "audio_codec": "mp3",
+            "audio_bitrate": "192k",
+            "audio_frequency": 44100
+          },
+          "export-audio": {
+            "operation": "export/url",
+            "input": ["convert-audio"],
+            "inline": false,
+            "archive_multiple_files": false
+          }
+        },
+        "tag": "video-to-audio"
+      })
     });
 
-    if (!transcriptionResponse.ok) {
-      const error = await transcriptionResponse.text();
-      throw new Error(`AssemblyAI API error: ${error}`);
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Cloud Convert API error:', error);
+      throw new Error(`Cloud Convert API error: ${error}`);
     }
 
-    const transcriptionData = await transcriptionResponse.json();
-    console.log('Transcription started:', transcriptionData);
+    const jobData = await response.json();
+    console.log('Cloud Convert job created:', jobData);
 
-    // Create the target audio filename - ensure no spaces in filename
+    // Create the target audio filename
     const timestamp = Date.now();
     const audioFileName = `converted-${timestamp}-${fileName.replace(/\s+/g, '_').replace(/\.[^/.]+$/, '')}.mp3`;
 
     return new Response(
       JSON.stringify({ 
-        conversionId: transcriptionData.id,
+        jobId: jobData.data.id,
         audioPath: audioFileName,
       }),
       { 

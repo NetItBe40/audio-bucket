@@ -12,53 +12,60 @@ serve(async (req) => {
   }
 
   try {
-    const { conversionId, audioPath } = await req.json();
+    const { jobId, audioPath } = await req.json();
     
-    if (!conversionId || !audioPath) {
+    if (!jobId || !audioPath) {
       throw new Error('Missing required parameters');
     }
 
-    console.log(`Checking conversion status for ID: ${conversionId}`);
+    console.log(`Checking conversion status for job ID: ${jobId}`);
     
-    // Vérifier le statut de la conversion avec AssemblyAI
+    // Check job status with Cloud Convert
     const response = await fetch(
-      `https://api.assemblyai.com/v2/transcript/${conversionId}`,
+      `https://api.cloudconvert.com/v2/jobs/${jobId}`,
       {
         headers: {
-          'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
+          'Authorization': `Bearer ${Deno.env.get('CLOUDCONVERT_API_KEY')}`,
         },
       }
     );
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('AssemblyAI API error response:', error);
-      throw new Error(`AssemblyAI API error: ${error}`);
+      console.error('Cloud Convert API error:', error);
+      throw new Error(`Cloud Convert API error: ${error}`);
     }
 
-    const data = await response.json();
-    console.log('AssemblyAI status:', data.status);
+    const jobData = await response.json();
+    console.log('Cloud Convert job status:', jobData.data.status);
 
-    // Si la conversion n'est pas terminée, retourner le statut actuel
-    if (data.status === 'queued' || data.status === 'processing') {
+    // If the job is still running, return the current status
+    if (jobData.data.status === 'waiting' || jobData.data.status === 'processing') {
       return new Response(
-        JSON.stringify({ status: data.status }),
+        JSON.stringify({ status: jobData.data.status }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Si une erreur s'est produite pendant la conversion
-    if (data.status === 'error') {
-      console.error('AssemblyAI processing error:', data.error);
-      throw new Error(`AssemblyAI processing error: ${data.error}`);
+    // If the job failed
+    if (jobData.data.status === 'error') {
+      console.error('Cloud Convert processing error:', jobData.data.message);
+      throw new Error(`Cloud Convert processing error: ${jobData.data.message}`);
     }
 
-    // Si la conversion est terminée
-    if (data.status === 'completed' && data.audio_url) {
-      console.log('Conversion completed. Downloading audio from:', data.audio_url);
+    // If the job is completed
+    if (jobData.data.status === 'finished') {
+      // Find the export task
+      const exportTask = jobData.data.tasks.find(task => task.operation === 'export/url');
       
-      // Télécharger le fichier audio converti
-      const audioResponse = await fetch(data.audio_url);
+      if (!exportTask || !exportTask.result?.files?.[0]?.url) {
+        throw new Error('No export URL found in completed job');
+      }
+
+      console.log('Downloading converted audio from:', exportTask.result.files[0].url);
+      
+      // Download the converted file
+      const audioResponse = await fetch(exportTask.result.files[0].url);
       
       if (!audioResponse.ok) {
         console.error('Audio download failed:', audioResponse.statusText);
@@ -72,7 +79,7 @@ serve(async (req) => {
         throw new Error('Downloaded audio file is empty');
       }
 
-      // Initialiser le client Supabase
+      // Initialize Supabase client
       const supabase = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -80,7 +87,7 @@ serve(async (req) => {
       
       console.log('Uploading to audio-recordings:', audioPath);
       
-      // Upload le fichier converti
+      // Upload the converted file
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(audioPath, audioBlob, {
@@ -95,7 +102,7 @@ serve(async (req) => {
 
       console.log('Audio file uploaded successfully');
 
-      // Mettre à jour la taille du fichier dans la base de données
+      // Update the file size in the database
       const { error: updateError } = await supabase
         .from('recordings')
         .update({ file_size: audioBlob.size })
@@ -105,7 +112,7 @@ serve(async (req) => {
         console.error('Failed to update file size:', updateError);
       }
 
-      // Nettoyer le fichier temporaire
+      // Clean up the temporary file
       const tempFileName = audioPath.split('/').pop()?.replace('converted-', '') || '';
       if (tempFileName) {
         console.log('Cleaning up temporary file:', tempFileName);
@@ -128,8 +135,8 @@ serve(async (req) => {
       );
     }
 
-    // Si on arrive ici, c'est qu'il y a un problème avec le statut
-    throw new Error(`Unexpected conversion status: ${data.status}`);
+    // If we get here, there's an unexpected status
+    throw new Error(`Unexpected job status: ${jobData.data.status}`);
 
   } catch (error) {
     console.error('Error in check-conversion:', error);

@@ -28,6 +28,85 @@ function extractVideoId(url: string) {
   return (match && match[7].length === 11) ? match[7] : null;
 }
 
+async function startConversion(videoUrl: string, rapidApiKey: string) {
+  console.log('Starting conversion for URL:', videoUrl);
+  
+  const response = await fetch('https://youtube-to-mp315.p.rapidapi.com/dl', {
+    method: 'GET',
+    headers: {
+      'X-RapidAPI-Key': rapidApiKey,
+      'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
+    },
+    params: { id: videoUrl }
+  });
+
+  if (!response.ok) {
+    console.error('RapidAPI error:', {
+      status: response.status,
+      statusText: response.statusText
+    });
+    const errorText = await response.text();
+    console.error('RapidAPI error response:', errorText);
+    throw new Error('Erreur lors du démarrage de la conversion');
+  }
+
+  const data = await response.json();
+  console.log('Conversion started:', JSON.stringify(data, null, 2));
+  
+  if (!data.id) {
+    console.error('Invalid response from RapidAPI:', data);
+    throw new Error('Réponse invalide de l\'API de conversion');
+  }
+
+  return data;
+}
+
+async function checkConversionStatus(conversionId: string, rapidApiKey: string) {
+  console.log('Checking conversion status for ID:', conversionId);
+  
+  const response = await fetch(`https://youtube-to-mp315.p.rapidapi.com/status/${conversionId}`, {
+    headers: {
+      'X-RapidAPI-Key': rapidApiKey,
+      'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
+    }
+  });
+
+  if (!response.ok) {
+    console.error('Status check error:', {
+      status: response.status,
+      statusText: response.statusText
+    });
+    throw new Error('Erreur lors de la vérification du statut');
+  }
+
+  const data = await response.json();
+  console.log('Status check response:', JSON.stringify(data, null, 2));
+  return data;
+}
+
+async function waitForConversion(conversionId: string, rapidApiKey: string, maxAttempts = 12) {
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    const status = await checkConversionStatus(conversionId, rapidApiKey);
+    
+    if (status.status === 'AVAILABLE') {
+      return status;
+    }
+    
+    if (status.status === 'ERROR') {
+      throw new Error('Erreur lors de la conversion');
+    }
+    
+    attempts++;
+    if (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds between checks
+    }
+  }
+  
+  throw new Error('Délai de conversion dépassé');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -59,44 +138,28 @@ serve(async (req) => {
     const safeTitle = videoDetails.title.replace(/[^\w\s]/gi, '');
     console.log('Video title:', safeTitle);
 
-    // Use youtube-to-mp315 API for conversion
-    console.log('Starting conversion with youtube-to-mp315...');
+    // Start conversion process
     const rapidApiKey = Deno.env.get('RAPIDAPI_KEY');
     if (!rapidApiKey) {
       throw new Error('RapidAPI key not configured');
     }
 
-    const y2mateResponse = await fetch(`https://youtube-to-mp315.p.rapidapi.com/dl?id=${videoId}`, {
-      headers: {
-        'X-RapidAPI-Key': rapidApiKey,
-        'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
-      }
-    });
+    // Start the conversion
+    const conversionData = await startConversion(videoId, rapidApiKey);
+    console.log('Conversion started, ID:', conversionData.id);
 
-    if (!y2mateResponse.ok) {
-      console.error('RapidAPI error:', {
-        status: y2mateResponse.status,
-        statusText: y2mateResponse.statusText
-      });
-      const errorText = await y2mateResponse.text();
-      console.error('RapidAPI error response:', errorText);
-      throw new Error('Erreur lors de la requête à RapidAPI');
+    // Wait for conversion to complete
+    const finalStatus = await waitForConversion(conversionData.id, rapidApiKey);
+    console.log('Conversion completed:', finalStatus);
+
+    if (!finalStatus.downloadUrl) {
+      throw new Error('URL de téléchargement manquante dans la réponse');
     }
 
-    const y2mateData = await y2mateResponse.json();
-    console.log('youtube-to-mp315 response:', JSON.stringify(y2mateData, null, 2));
-
-    if (!y2mateData.link) {
-      console.error('Invalid response from RapidAPI:', y2mateData);
-      throw new Error('Réponse invalide de l\'API de conversion');
-    }
-
-    console.log('Conversion successful, returning download link');
-    
     return new Response(
       JSON.stringify({
-        downloadUrl: y2mateData.link,
-        title: safeTitle
+        downloadUrl: finalStatus.downloadUrl,
+        title: finalStatus.title || safeTitle
       }),
       { 
         headers: { 

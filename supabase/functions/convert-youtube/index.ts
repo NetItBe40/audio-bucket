@@ -14,20 +14,21 @@ function extractVideoId(url: string) {
 async function startConversion(videoId: string, rapidApiKey: string) {
   console.log('Starting conversion for video ID:', videoId);
   
-  const url = `https://youtube-to-mp315.p.rapidapi.com/dl?id=${videoId}`;
+  // Updated URL format according to RapidAPI documentation
+  const url = `https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`;
   console.log('Making request to:', url);
   
   const options = {
     method: 'GET',
     headers: {
-      'content-type': 'application/json',
       'X-RapidAPI-Key': rapidApiKey,
-      'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
+      'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com'
     }
   };
 
   try {
     const response = await fetch(url, options);
+    console.log('Response status:', response.status);
     
     if (!response.ok) {
       console.error('RapidAPI error:', {

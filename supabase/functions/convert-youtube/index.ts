@@ -1,9 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const rapidApiKey = Deno.env.get('RAPIDAPI_KEY');
-if (!rapidApiKey) {
-  throw new Error('RAPIDAPI_KEY is not set');
-}
+import ytdl from 'https://esm.sh/ytdl-core@4.11.5';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +8,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -20,71 +18,87 @@ serve(async (req) => {
     console.log('Processing YouTube URL:', youtubeUrl);
 
     if (!youtubeUrl) {
-      return new Response(
-        JSON.stringify({ error: "YouTube URL is required" }),
-        { 
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+      throw new Error('URL YouTube manquante');
     }
 
-    const apiUrl = 'https://youtube-to-mp315.p.rapidapi.com/download';
-    const queryParams = new URLSearchParams({
-      url: youtubeUrl,
-      format: 'mp3',
-      quality: '0'
-    });
+    // Validate YouTube URL
+    if (!ytdl.validateURL(youtubeUrl)) {
+      throw new Error('URL YouTube invalide');
+    }
 
-    const url = `${apiUrl}?${queryParams}`;
-    console.log('Making request to RapidAPI:', url);
+    // Get video info
+    console.log('Getting video info...');
+    const info = await ytdl.getInfo(youtubeUrl);
+    const videoTitle = info.videoDetails.title.replace(/[^\w\s]/gi, '');
     
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-RapidAPI-Key': rapidApiKey,
-        'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
-      }
+    // Get audio format
+    const audioFormat = ytdl.chooseFormat(info.formats, { 
+      quality: 'highestaudio',
+      filter: 'audioonly' 
     });
 
-    const result = await response.json();
-    console.log('API Response:', result);
-
-    if (response.status === 429) {
-      console.error('Rate limit exceeded');
-      return new Response(
-        JSON.stringify({
-          error: "Rate limit exceeded",
-          isRateLimit: true,
-          details: "Monthly quota exceeded. Please try again next month or contact support."
-        }),
-        { 
-          status: 429,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+    if (!audioFormat) {
+      throw new Error('Aucun format audio disponible');
     }
 
-    if (!response.ok) {
-      throw new Error(`API responded with status ${response.status}: ${JSON.stringify(result)}`);
-    }
-
-    return new Response(
-      JSON.stringify(result),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+    // Create Supabase client
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-  } catch (error) {
-    console.error('Error in convert-youtube function:', error);
+
+    // Download audio and upload to Supabase Storage
+    console.log('Downloading and uploading audio...');
+    const response = await fetch(audioFormat.url);
+    if (!response.ok) throw new Error('Échec du téléchargement');
+
+    const timestamp = Date.now();
+    const fileName = `${timestamp}-${videoTitle}.mp3`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('audio-recordings')
+      .upload(fileName, response.body, {
+        contentType: 'audio/mpeg',
+        duplex: 'half'
+      });
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      throw new Error('Échec de l\'upload');
+    }
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('audio-recordings')
+      .getPublicUrl(fileName);
+
+    console.log('Conversion completed successfully');
+    
     return new Response(
       JSON.stringify({
-        error: "Internal server error",
-        details: error.message
+        downloadUrl: publicUrl,
+        title: videoTitle
       }),
       { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+  } catch (error) {
+    console.error('Error:', error);
+    return new Response(
+      JSON.stringify({
+        error: error.message || 'Une erreur est survenue'
+      }),
+      { 
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
+        status: 400
       }
     );
   }

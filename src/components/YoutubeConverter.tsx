@@ -42,35 +42,16 @@ const YoutubeConverter = () => {
 
     setIsConverting(true);
     try {
-      console.log('Starting conversion for URL:', url);
       const { data, error } = await supabase.functions.invoke('convert-youtube', {
         body: { youtubeUrl: url }
       });
 
-      if (error) {
-        console.error('Supabase function error:', error);
-        throw error;
-      }
+      if (error) throw error;
       
       if (!data?.downloadUrl) {
-        console.error('Invalid response:', data);
-        if (data?.isRateLimit) {
-          toast({
-            title: "Service temporairement indisponible",
-            description: "Le quota mensuel de conversions YouTube a été atteint. Veuillez réessayer le mois prochain ou contacter le support.",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Erreur de conversion",
-            description: data?.error || "Une erreur est survenue lors de la conversion",
-            variant: "destructive",
-          });
-        }
-        return;
+        throw new Error(data?.error || "Une erreur est survenue lors de la conversion");
       }
 
-      console.log('Conversion successful:', data);
       setConvertedFile({
         url: data.downloadUrl,
         title: data.title || 'YouTube conversion'

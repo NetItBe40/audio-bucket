@@ -1,4 +1,4 @@
-import { createFFmpeg } from 'https://esm.sh/@ffmpeg/ffmpeg@0.10.1';
+import { createFFmpeg } from 'https://esm.sh/@ffmpeg/ffmpeg@0.9.7';
 
 export class AudioConverter {
   private ffmpeg;
@@ -7,8 +7,7 @@ export class AudioConverter {
     this.ffmpeg = createFFmpeg({
       log: true,
       logger: ({ message }) => console.log(message),
-      corePath: 'https://unpkg.com/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js',
-      mainName: 'main'
+      corePath: 'https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js'
     });
   }
   

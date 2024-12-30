@@ -31,36 +31,43 @@ function extractVideoId(url: string) {
 async function startConversion(videoId: string, rapidApiKey: string) {
   console.log('Starting conversion for video ID:', videoId);
   
-  const url = `https://youtube-to-mp315.p.rapidapi.com/dl?id=${encodeURIComponent(videoId)}`;
-  console.log('Making request to:', url);
+  const apiUrl = new URL('https://youtube-to-mp315.p.rapidapi.com/dl');
+  apiUrl.searchParams.append('id', videoId);
   
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'X-RapidAPI-Key': rapidApiKey,
-      'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
-    }
-  });
-
-  if (!response.ok) {
-    console.error('RapidAPI error:', {
-      status: response.status,
-      statusText: response.statusText
+  console.log('Making request to:', apiUrl.toString());
+  
+  try {
+    const response = await fetch(apiUrl.toString(), {
+      method: 'GET',
+      headers: {
+        'X-RapidAPI-Key': rapidApiKey,
+        'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
+      }
     });
-    const errorText = await response.text();
-    console.error('RapidAPI error response:', errorText);
-    throw new Error('Erreur lors du démarrage de la conversion');
-  }
 
-  const data = await response.json();
-  console.log('Conversion started:', JSON.stringify(data, null, 2));
-  
-  if (!data.id) {
-    console.error('Invalid response from RapidAPI:', data);
-    throw new Error('Réponse invalide de l\'API de conversion');
-  }
+    if (!response.ok) {
+      console.error('RapidAPI error:', {
+        status: response.status,
+        statusText: response.statusText
+      });
+      const errorText = await response.text();
+      console.error('RapidAPI error response:', errorText);
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
 
-  return data;
+    const data = await response.json();
+    console.log('Conversion started:', JSON.stringify(data, null, 2));
+    
+    if (!data.id) {
+      console.error('Invalid response from RapidAPI:', data);
+      throw new Error('Réponse invalide de l\'API de conversion');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in startConversion:', error);
+    throw new Error(`Erreur lors de la conversion: ${error.message}`);
+  }
 }
 
 async function checkConversionStatus(conversionId: string, rapidApiKey: string) {
@@ -129,18 +136,6 @@ serve(async (req) => {
       throw new Error('URL YouTube invalide');
     }
 
-    const apiKey = Deno.env.get('YOUTUBE_API_KEY');
-    if (!apiKey) {
-      throw new Error('YouTube API key not configured');
-    }
-
-    // Get video details from YouTube API
-    console.log('Fetching video details from YouTube API...');
-    const videoDetails = await getVideoDetails(videoId, apiKey);
-    const safeTitle = videoDetails.title.replace(/[^\w\s]/gi, '');
-    console.log('Video title:', safeTitle);
-
-    // Start conversion process
     const rapidApiKey = Deno.env.get('RAPIDAPI_KEY');
     if (!rapidApiKey) {
       throw new Error('RapidAPI key not configured');
@@ -161,7 +156,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         downloadUrl: finalStatus.downloadUrl,
-        title: finalStatus.title || safeTitle
+        title: finalStatus.title || 'Sans titre'
       }),
       { 
         headers: { 

@@ -18,10 +18,9 @@ serve(async (req) => {
       throw new Error('Missing required parameters');
     }
 
-    console.log(`Starting conversion check for ID: ${conversionId}`);
-    console.log(`Target audio path: ${audioPath}`);
-
-    // Check conversion status with detailed error handling
+    console.log(`Checking conversion status for ID: ${conversionId}`);
+    
+    // Vérifier le statut de la conversion avec AssemblyAI
     const response = await fetch(
       `https://api.assemblyai.com/v2/transcript/${conversionId}`,
       {
@@ -40,80 +39,98 @@ serve(async (req) => {
     const data = await response.json();
     console.log('AssemblyAI status:', data.status);
 
+    // Si la conversion n'est pas terminée, retourner le statut actuel
+    if (data.status === 'queued' || data.status === 'processing') {
+      return new Response(
+        JSON.stringify({ status: data.status }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Si une erreur s'est produite pendant la conversion
     if (data.status === 'error') {
       console.error('AssemblyAI processing error:', data.error);
       throw new Error(`AssemblyAI processing error: ${data.error}`);
     }
 
-    if (data.status !== 'completed') {
+    // Si la conversion est terminée
+    if (data.status === 'completed' && data.audio_url) {
+      console.log('Conversion completed. Downloading audio from:', data.audio_url);
+      
+      // Télécharger le fichier audio converti
+      const audioResponse = await fetch(data.audio_url);
+      
+      if (!audioResponse.ok) {
+        console.error('Audio download failed:', audioResponse.statusText);
+        throw new Error(`Failed to download converted audio: ${audioResponse.statusText}`);
+      }
+
+      const audioBlob = await audioResponse.blob();
+      console.log('Audio file downloaded, size:', audioBlob.size);
+      
+      if (audioBlob.size === 0) {
+        throw new Error('Downloaded audio file is empty');
+      }
+
+      // Initialiser le client Supabase
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      console.log('Uploading to audio-recordings:', audioPath);
+      
+      // Upload le fichier converti
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('audio-recordings')
+        .upload(audioPath, audioBlob, {
+          contentType: 'audio/mpeg',
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw new Error(`Upload error: ${uploadError.message}`);
+      }
+
+      console.log('Audio file uploaded successfully');
+
+      // Mettre à jour la taille du fichier dans la base de données
+      const { error: updateError } = await supabase
+        .from('recordings')
+        .update({ file_size: audioBlob.size })
+        .eq('file_path', audioPath);
+
+      if (updateError) {
+        console.error('Failed to update file size:', updateError);
+      }
+
+      // Nettoyer le fichier temporaire
+      const tempFileName = audioPath.split('/').pop()?.replace('converted-', '') || '';
+      if (tempFileName) {
+        console.log('Cleaning up temporary file:', tempFileName);
+        const { error: deleteError } = await supabase.storage
+          .from('temp-uploads')
+          .remove([tempFileName]);
+
+        if (deleteError) {
+          console.error('Failed to delete temporary file:', deleteError);
+        }
+      }
+
       return new Response(
-        JSON.stringify({ status: data.status }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        JSON.stringify({ 
+          status: 'completed',
+          audioPath,
+          size: audioBlob.size
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Download the converted audio file
-    console.log('Downloading converted audio from:', data.audio_url);
-    const audioResponse = await fetch(data.audio_url);
-    
-    if (!audioResponse.ok) {
-      console.error('Audio download failed:', audioResponse.statusText);
-      throw new Error(`Failed to download converted audio: ${audioResponse.statusText}`);
-    }
+    // Si on arrive ici, c'est qu'il y a un problème avec le statut
+    throw new Error(`Unexpected conversion status: ${data.status}`);
 
-    const audioBlob = await audioResponse.blob();
-    console.log('Audio file downloaded, size:', audioBlob.size);
-    
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    
-    console.log('Uploading to audio-recordings:', audioPath);
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('audio-recordings')
-      .upload(audioPath, audioBlob, {
-        contentType: 'audio/mpeg',
-        upsert: true // Allow overwriting if file exists
-      });
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      throw new Error(`Upload error: ${uploadError.message}`);
-    }
-
-    console.log('Audio file uploaded successfully:', uploadData);
-
-    // Clean up the temporary video file
-    const tempFileName = audioPath.split('/').pop()?.replace('converted-', '') || '';
-    if (tempFileName) {
-      console.log('Cleaning up temporary file:', tempFileName);
-      const { error: deleteError } = await supabase.storage
-        .from('temp-uploads')
-        .remove([tempFileName]);
-
-      if (deleteError) {
-        console.error('Failed to delete temporary file:', deleteError);
-        // Don't throw here, as the conversion was successful
-      }
-    }
-
-    // Get the public URL for the uploaded audio file
-    const { data: { publicUrl } } = supabase.storage
-      .from('audio-recordings')
-      .getPublicUrl(audioPath);
-
-    console.log('Audio file processing completed. Public URL:', publicUrl);
-
-    return new Response(
-      JSON.stringify({ 
-        status: 'completed',
-        audioPath,
-        publicUrl
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    );
   } catch (error) {
     console.error('Error in check-conversion:', error);
     return new Response(
@@ -123,8 +140,8 @@ serve(async (req) => {
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      },
+        status: 500
+      }
     );
   }
 });

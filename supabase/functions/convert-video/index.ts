@@ -82,11 +82,11 @@ serve(async (req) => {
             input: ["import"],
             output_format: "mp3",
             engine: "ffmpeg",
-            audio_codec: "libmp3lame",
+            audio_codec: "mp3",
             audio_bitrate: "192",
             audio_frequency: "44100",
             audio_channels: "2",
-            audio_quality: 0, // Meilleure qualité pour libmp3lame
+            audio_quality: 0
           },
           "export": {
             operation: "export/url",

@@ -21,12 +21,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
       // Upload direct vers temp-uploads
       const { error: uploadError } = await supabase.storage
         .from('temp-uploads')
-        .upload(fileName, file, {
-          onUploadProgress: (progress) => {
-            const percent = (progress.loaded / progress.total) * 100;
-            setProgress(Math.round(percent));
-          }
-        });
+        .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 

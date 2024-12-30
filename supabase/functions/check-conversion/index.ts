@@ -19,6 +19,7 @@ serve(async (req) => {
     }
 
     console.log(`Checking conversion status for: ${conversionId}`);
+    console.log(`Target audio path: ${audioPath}`);
 
     // Check conversion status with detailed error handling
     const response = await fetch(
@@ -32,6 +33,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const error = await response.text();
+      console.error('AssemblyAI API error response:', error);
       throw new Error(`AssemblyAI API error: ${error}`);
     }
 
@@ -39,6 +41,7 @@ serve(async (req) => {
     console.log('Conversion status:', data.status);
 
     if (data.status === 'error') {
+      console.error('AssemblyAI processing error:', data.error);
       throw new Error(`AssemblyAI processing error: ${data.error}`);
     }
 
@@ -54,10 +57,12 @@ serve(async (req) => {
     const audioResponse = await fetch(data.audio_url);
     
     if (!audioResponse.ok) {
+      console.error('Audio download failed:', audioResponse.statusText);
       throw new Error(`Failed to download converted audio: ${audioResponse.statusText}`);
     }
 
     const audioBlob = await audioResponse.blob();
+    console.log('Audio file downloaded, size:', audioBlob.size);
     
     // Initialize Supabase client
     const supabase = createClient(
@@ -77,6 +82,8 @@ serve(async (req) => {
       console.error('Upload error:', uploadError);
       throw new Error(`Upload error: ${uploadError.message}`);
     }
+
+    console.log('Audio file uploaded successfully');
 
     // Clean up the temporary video file
     console.log('Cleaning up temporary file...');

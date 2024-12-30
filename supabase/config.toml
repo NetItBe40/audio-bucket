@@ -2,9 +2,6 @@ project_id = "lxxqhqdnnlnjtqoswlbj"
 
 [functions.convert-video]
 verify_jwt = true
-import_map = "supabase/functions/import_map.json"
-memory_limit = 1024
-timeout_ms = 60000
 
 [functions.transcribe]
 verify_jwt = true

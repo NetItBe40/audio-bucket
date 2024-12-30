@@ -15,19 +15,15 @@ async function startConversion(videoId: string, rapidApiKey: string) {
   console.log('Starting conversion for video ID:', videoId);
   
   const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const apiUrl = `https://youtube-to-mp315.p.rapidapi.com/download`;
+  const apiUrl = `https://youtube-to-mp315.p.rapidapi.com/download?url=${encodeURIComponent(youtubeUrl)}`;
   console.log('Making request to:', apiUrl);
   
   const options = {
-    method: 'POST',
+    method: 'GET',
     headers: {
-      'content-type': 'application/json',
       'X-RapidAPI-Key': rapidApiKey,
       'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
-    },
-    body: JSON.stringify({
-      url: youtubeUrl
-    })
+    }
   };
 
   try {

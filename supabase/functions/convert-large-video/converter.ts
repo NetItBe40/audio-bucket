@@ -1,64 +1,48 @@
-import { createFFmpeg } from 'https://esm.sh/@ffmpeg/ffmpeg@0.9.7';
-
 export class AudioConverter {
-  private ffmpeg;
-  
+  private tempDir: string;
+
   constructor() {
-    // Configure FFmpeg without relying on browser APIs
-    this.ffmpeg = createFFmpeg({
-      log: true,
-      logger: ({ message }) => console.log(message),
-      // Use direct URL without resolution
-      corePath: new URL('https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js').href
-    });
+    // Créer un dossier temporaire unique pour cette conversion
+    this.tempDir = Deno.makeTempDirSync();
   }
-  
-  async init() {
+
+  async convertToMp3(videoPath: string): Promise<Uint8Array> {
+    const outputPath = `${this.tempDir}/output.mp3`;
+    console.log(`Converting ${videoPath} to ${outputPath}`);
+
     try {
-      if (!this.ffmpeg.isLoaded()) {
-        console.log('Loading FFmpeg...');
-        await this.ffmpeg.load();
+      // Utiliser la commande FFmpeg native
+      const ffmpeg = new Deno.Command("ffmpeg", {
+        args: [
+          "-i", videoPath,
+          "-vn",
+          "-acodec", "libmp3lame",
+          "-ab", "128k",
+          "-ar", "44100",
+          outputPath
+        ],
+      });
+
+      const { code, stderr } = await ffmpeg.output();
+      
+      if (code !== 0) {
+        throw new Error(`FFmpeg failed with error: ${new TextDecoder().decode(stderr)}`);
       }
-      console.log('FFmpeg loaded successfully');
+
+      // Lire le fichier MP3 généré
+      const audioData = await Deno.readFile(outputPath);
+      
+      return audioData;
     } catch (error) {
-      console.error('Error loading FFmpeg:', error);
-      throw new Error(`FFmpeg initialization failed: ${error.message}`);
-    }
-  }
-  
-  async convertToMp3(videoData: Uint8Array): Promise<Uint8Array> {
-    try {
-      console.log('Starting video conversion...');
-      
-      // Write input file to memory
-      console.log('Writing input file to memory...');
-      this.ffmpeg.FS('writeFile', 'input.webm', videoData);
-      
-      // Run FFmpeg command
-      console.log('Running FFmpeg conversion command...');
-      await this.ffmpeg.run(
-        '-i', 'input.webm',
-        '-vn',
-        '-acodec', 'libmp3lame',
-        '-ab', '128k',
-        '-ar', '44100',
-        'output.mp3'
-      );
-      
-      // Read the output file from memory
-      console.log('Reading output file from memory...');
-      const data = this.ffmpeg.FS('readFile', 'output.mp3');
-      
-      // Clean up
-      console.log('Cleaning up temporary files...');
-      this.ffmpeg.FS('unlink', 'input.webm');
-      this.ffmpeg.FS('unlink', 'output.mp3');
-      
-      console.log('Conversion completed successfully');
-      return data;
-    } catch (error) {
-      console.error('Error during conversion:', error);
-      throw new Error(`Video conversion failed: ${error.message}`);
+      console.error("Conversion error:", error);
+      throw error;
+    } finally {
+      // Nettoyage
+      try {
+        await Deno.remove(this.tempDir, { recursive: true });
+      } catch (error) {
+        console.error("Error cleaning up temp directory:", error);
+      }
     }
   }
 }

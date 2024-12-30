@@ -23,29 +23,26 @@ serve(async (req) => {
     const storage = new StorageManager()
     
     try {
-      // Combine chunks
-      console.log('Combining video chunks...')
-      const chunks: Uint8Array[] = []
+      // Download and combine chunks
+      console.log('Processing video chunks...')
+      const chunkPaths: string[] = []
+      const tempChunks: string[] = []
+
       for (let i = 0; i < totalChunks; i++) {
         const chunkPath = `temp/${fileName}-chunk-${i}`
-        console.log(`Downloading chunk: ${chunkPath}`)
-        chunks.push(await storage.downloadChunk(chunkPath))
+        tempChunks.push(chunkPath)
+        const localPath = await storage.downloadChunk(chunkPath)
+        chunkPaths.push(localPath)
       }
 
-      // Combine chunks
-      const totalSize = chunks.reduce((acc, chunk) => acc + chunk.length, 0)
-      const combinedVideo = new Uint8Array(totalSize)
-      let offset = 0
-      for (const chunk of chunks) {
-        combinedVideo.set(chunk, offset)
-        offset += chunk.length
-      }
+      // Combine chunks into a single video file
+      console.log('Combining video chunks...')
+      const combinedVideoPath = await storage.combineChunks(chunkPaths)
 
       // Convert to audio
       console.log('Converting to audio...')
       const converter = new AudioConverter()
-      await converter.init()
-      const audioData = await converter.convertToMp3(combinedVideo)
+      const audioData = await converter.convertToMp3(combinedVideoPath)
       
       // Upload converted audio
       const audioFileName = `converted-${fileName}.mp3`
@@ -53,9 +50,6 @@ serve(async (req) => {
       
       // Clean up temporary chunks
       console.log('Cleaning up temporary chunks...')
-      const tempChunks = Array.from({ length: totalChunks }, (_, i) => 
-        `temp/${fileName}-chunk-${i}`
-      )
       await storage.cleanup(tempChunks)
 
       return new Response(

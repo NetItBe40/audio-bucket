@@ -21,9 +21,9 @@ export const handleError = (error: Error, status = 500) => {
 }
 
 export const validateRequest = (body: any) => {
-  const { videoChunk, fileName, chunkIndex, totalChunks, userId } = body
+  const { fileName, totalChunks, originalName } = body
   
-  if (!videoChunk || !fileName || chunkIndex === undefined || !totalChunks || !userId) {
+  if (!fileName || totalChunks === undefined || !originalName) {
     throw new Error('Missing required parameters')
   }
 }

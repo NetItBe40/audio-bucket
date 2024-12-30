@@ -25,7 +25,7 @@ export const useChunkedUpload = (onUploadComplete: (path: string) => void) => {
       if (!userData.user) throw new Error("Non authentifié");
 
       const timestamp = Date.now();
-      const chunkName = `${userData.user.id}/temp/${timestamp}-chunk-${chunkIndex}-${fileName}`;
+      const chunkName = `temp/${fileName}-chunk-${chunkIndex}`;
 
       const { error: uploadError } = await supabase.storage
         .from('temp-uploads')

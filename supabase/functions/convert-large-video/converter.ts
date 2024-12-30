@@ -4,22 +4,25 @@ export class AudioConverter {
   private ffmpeg;
   
   constructor() {
+    // Configure FFmpeg without relying on browser APIs
     this.ffmpeg = createFFmpeg({
       log: true,
       logger: ({ message }) => console.log(message),
-      corePath: 'https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js'
+      // Use direct URL without resolution
+      corePath: new URL('https://unpkg.com/@ffmpeg/core@0.8.5/dist/ffmpeg-core.js').href
     });
   }
   
   async init() {
     try {
       if (!this.ffmpeg.isLoaded()) {
+        console.log('Loading FFmpeg...');
         await this.ffmpeg.load();
       }
       console.log('FFmpeg loaded successfully');
     } catch (error) {
       console.error('Error loading FFmpeg:', error);
-      throw error;
+      throw new Error(`FFmpeg initialization failed: ${error.message}`);
     }
   }
   
@@ -55,7 +58,7 @@ export class AudioConverter {
       return data;
     } catch (error) {
       console.error('Error during conversion:', error);
-      throw error;
+      throw new Error(`Video conversion failed: ${error.message}`);
     }
   }
 }

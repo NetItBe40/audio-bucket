@@ -28,14 +28,9 @@ const YoutubeConverter = () => {
       if (error) throw error;
       if (!data.downloadUrl) throw new Error('No download URL received');
 
-      // Create a Blob from the array buffer
-      const fileBlob = new Blob(
-        [new Uint8Array(data.fileData)],
-        { type: data.contentType }
-      );
-
+      // Store the download URL and title
       setConvertedFile({
-        url: URL.createObjectURL(fileBlob),
+        url: data.downloadUrl,
         title: data.title || 'YouTube conversion'
       });
       setShowSaveDialog(true);
@@ -61,8 +56,10 @@ const YoutubeConverter = () => {
       const timestamp = Date.now();
       const fileName = `${userData.user.id}/${timestamp}-${title}.mp3`;
 
-      // Get the Blob from the object URL
+      // Download the file from the URL
       const response = await fetch(convertedFile.url);
+      if (!response.ok) throw new Error('Failed to download the file');
+      
       const blob = await response.blob();
 
       // Upload to Supabase Storage

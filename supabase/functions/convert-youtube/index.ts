@@ -1,5 +1,5 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,16 +28,18 @@ function extractVideoId(url: string) {
   return (match && match[7].length === 11) ? match[7] : null;
 }
 
-async function startConversion(videoUrl: string, rapidApiKey: string) {
-  console.log('Starting conversion for URL:', videoUrl);
+async function startConversion(videoId: string, rapidApiKey: string) {
+  console.log('Starting conversion for video ID:', videoId);
   
-  const response = await fetch('https://youtube-to-mp315.p.rapidapi.com/dl', {
+  const url = `https://youtube-to-mp315.p.rapidapi.com/dl?id=${encodeURIComponent(videoId)}`;
+  console.log('Making request to:', url);
+  
+  const response = await fetch(url, {
     method: 'GET',
     headers: {
       'X-RapidAPI-Key': rapidApiKey,
       'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
-    },
-    params: { id: videoUrl }
+    }
   });
 
   if (!response.ok) {

@@ -1,98 +1,78 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import DropZone from "./upload/DropZone";
 import UploadProgress from "./upload/UploadProgress";
-import { useVideoConversion } from "@/hooks/useVideoConversion";
+import { useChunkedUpload } from "@/hooks/useChunkedUpload";
 import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 const AudioUpload = () => {
   const { toast } = useToast();
-  const [isUploading, setIsUploading] = useState(false);
   const queryClient = useQueryClient();
+  const [isConverting, setIsConverting] = useState(false);
 
-  const uploadFile = async (file: File) => {
-    setIsUploading(true);
-
+  const handleUploadComplete = async (audioPath: string) => {
     try {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      if (!userData.user) throw new Error("User not authenticated");
-
-      const timestamp = Date.now();
-      const randomString = Math.random().toString(36).substring(7);
-      const fileName = `${userData.user.id}/${timestamp}-${randomString}-${file.name}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('audio-recordings')
-        .upload(fileName, file, {
-          upsert: true
-        });
-
-      if (uploadError) throw uploadError;
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error("Non authentifié");
 
       const { error: insertError } = await supabase
         .from('recordings')
         .insert({
-          title: file.name,
-          file_path: fileName,
-          file_size: file.size,
-          duration: null,
+          title: audioPath.split('/').pop() || 'Sans titre',
+          file_path: audioPath,
+          file_size: 0, // Sera mis à jour par le backend
           user_id: userData.user.id,
         });
 
       if (insertError) throw insertError;
 
       queryClient.invalidateQueries({ queryKey: ['recordings'] });
-
-      toast({
-        title: "Upload réussi",
-        description: "Le fichier a été uploadé avec succès",
-      });
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('Erreur lors de l\'enregistrement:', error);
       toast({
-        title: "Erreur d'upload",
-        description: "Une erreur est survenue lors de l'upload du fichier",
+        title: "Erreur",
+        description: "Une erreur est survenue lors de l'enregistrement",
         variant: "destructive",
       });
-    } finally {
-      setIsUploading(false);
     }
   };
 
-  const { isConverting, progress, convertVideo } = useVideoConversion(async (audioPath) => {
-    const { data: audioData, error: downloadError } = await supabase.storage
-      .from('audio-recordings')
-      .download(audioPath);
-
-    if (downloadError) throw downloadError;
-
-    const audioFile = new File([audioData], audioPath.split('/').pop() || 'converted-audio.mp3', {
-      type: 'audio/mpeg',
-    });
-
-    await uploadFile(audioFile);
-  });
+  const { uploadFile, isUploading, progress } = useChunkedUpload(handleUploadComplete);
 
   const handleFileSelect = async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) {
-      if (file.type.startsWith('video/')) {
-        await convertVideo(file);
-      } else {
-        toast({
-          title: "Fichier trop volumineux",
-          description: "La taille maximale autorisée est de 50MB",
-          variant: "destructive",
-        });
-      }
+    if (file.size > MAX_FILE_SIZE && !file.type.startsWith('video/')) {
+      toast({
+        title: "Fichier trop volumineux",
+        description: "La taille maximale autorisée est de 50MB",
+        variant: "destructive",
+      });
       return;
     }
 
-    await uploadFile(file);
+    if (file.type.startsWith('video/')) {
+      setIsConverting(true);
+      await uploadFile(file);
+      setIsConverting(false);
+    } else {
+      // Upload direct pour les fichiers audio
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error("Non authentifié");
+
+      const timestamp = Date.now();
+      const fileName = `${userData.user.id}/${timestamp}-${file.name}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('audio-recordings')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      await handleUploadComplete(fileName);
+    }
   };
 
   return (

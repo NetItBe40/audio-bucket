@@ -14,23 +14,24 @@ function extractVideoId(url: string) {
 async function startConversion(videoId: string, rapidApiKey: string) {
   console.log('Starting conversion for video ID:', videoId);
   
-  const url = `https://youtube-mp3-downloader-v2.p.rapidapi.com/ytmp3/ytmp3/`;
+  const url = 'https://youtube-to-mp315.p.rapidapi.com/download';
   console.log('Making request to:', url);
   
   const options = {
-    method: 'GET',
+    method: 'POST',
     headers: {
       'X-RapidAPI-Key': rapidApiKey,
-      'X-RapidAPI-Host': 'youtube-mp3-downloader-v2.p.rapidapi.com'
+      'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com',
+      'Content-Type': 'application/json',
     },
-    params: {
-      url: `https://www.youtube.com/watch?v=${videoId}`
-    }
+    body: JSON.stringify({
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+    })
   };
 
   try {
     console.log('Request options:', JSON.stringify(options, null, 2));
-    const response = await fetch(`${url}?url=https://www.youtube.com/watch?v=${videoId}`, options);
+    const response = await fetch(url, options);
     console.log('Response status:', response.status);
     
     if (!response.ok) {
@@ -46,14 +47,54 @@ async function startConversion(videoId: string, rapidApiKey: string) {
     const result = await response.json();
     console.log('API Response:', result);
 
-    if (result.status === 'ok' && result.link) {
-      return {
-        downloadUrl: result.link,
-        title: result.title || 'YouTube conversion'
-      };
-    } else {
-      throw new Error(result.msg || 'Conversion failed');
+    // Attendre que la conversion soit terminée
+    let conversionStatus = 'CONVERTING';
+    let attempts = 0;
+    const maxAttempts = 30; // 30 secondes maximum
+    
+    while (conversionStatus === 'CONVERTING' && attempts < maxAttempts) {
+      const statusResponse = await fetch(
+        `https://youtube-to-mp315.p.rapidapi.com/status/${result.id}`, 
+        {
+          headers: {
+            'X-RapidAPI-Key': rapidApiKey,
+            'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com',
+          }
+        }
+      );
+      
+      if (!statusResponse.ok) {
+        throw new Error(`Status check failed: ${statusResponse.status}`);
+      }
+      
+      const statusResult = await statusResponse.json();
+      console.log('Status check result:', statusResult);
+      
+      if (statusResult.status === 'AVAILABLE') {
+        return {
+          downloadUrl: statusResult.downloadUrl || result.downloadUrl,
+          title: statusResult.title || 'YouTube conversion'
+        };
+      } else if (statusResult.status === 'ERROR') {
+        throw new Error('Conversion failed');
+      }
+      
+      conversionStatus = statusResult.status;
+      attempts++;
+      
+      if (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
+    
+    if (attempts >= maxAttempts) {
+      throw new Error('Conversion timeout');
+    }
+
+    return {
+      downloadUrl: result.downloadUrl,
+      title: result.title || 'YouTube conversion'
+    };
   } catch (error) {
     console.error('Error during API call:', error);
     throw error;

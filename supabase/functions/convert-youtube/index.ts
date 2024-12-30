@@ -73,11 +73,22 @@ serve(async (req) => {
       }
     });
 
+    if (!y2mateResponse.ok) {
+      console.error('RapidAPI error:', {
+        status: y2mateResponse.status,
+        statusText: y2mateResponse.statusText
+      });
+      const errorText = await y2mateResponse.text();
+      console.error('RapidAPI error response:', errorText);
+      throw new Error('Erreur lors de la requête à RapidAPI');
+    }
+
     const y2mateData = await y2mateResponse.json();
-    console.log('youtube-to-mp315 response:', y2mateData);
+    console.log('youtube-to-mp315 response:', JSON.stringify(y2mateData, null, 2));
 
     if (!y2mateData.link) {
-      throw new Error('Échec de la conversion');
+      console.error('Invalid response from RapidAPI:', y2mateData);
+      throw new Error('Réponse invalide de l\'API de conversion');
     }
 
     console.log('Conversion successful, returning download link');

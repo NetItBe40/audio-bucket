@@ -6,6 +6,34 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function uploadToAssemblyAI(file: ArrayBuffer) {
+  console.log('Starting AssemblyAI upload...');
+  try {
+    const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
+        'Content-Type': 'application/octet-stream',
+        'Transfer-Encoding': 'chunked'
+      },
+      body: file
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error('AssemblyAI upload error:', errorText);
+      throw new Error(`AssemblyAI upload failed: ${errorText}`);
+    }
+
+    const { upload_url } = await uploadResponse.json();
+    console.log('File uploaded to AssemblyAI:', upload_url);
+    return upload_url;
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw new Error(`AssemblyAI upload error: ${error.message}`);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -47,24 +75,8 @@ serve(async (req) => {
     }
     const fileBuffer = await fileResponse.arrayBuffer();
 
-    console.log('Starting AssemblyAI upload...');
-    const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
-      method: 'POST',
-      headers: {
-        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
-        'Content-Type': 'application/octet-stream',
-      },
-      body: fileBuffer
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error('AssemblyAI upload error:', errorText);
-      throw new Error(`AssemblyAI upload failed: ${errorText}`);
-    }
-
-    const { upload_url } = await uploadResponse.json();
-    console.log('File uploaded to AssemblyAI:', upload_url);
+    // Upload to AssemblyAI with improved error handling
+    const uploadUrl = await uploadToAssemblyAI(fileBuffer);
 
     // Start conversion process
     const conversionResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
@@ -74,7 +86,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        audio_url: upload_url,
+        audio_url: uploadUrl,
         language_code: 'fr',
       }),
     });

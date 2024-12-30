@@ -18,7 +18,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
       const timestamp = Date.now();
       const fileName = `${timestamp}-${file.name}`;
 
-      // Upload direct vers temp-uploads avec XHR pour suivre la progression
+      // Upload to temp-uploads with XHR for progress tracking
       const xhr = new XMLHttpRequest();
       const formData = new FormData();
       formData.append('file', file);
@@ -43,7 +43,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
           reject(new Error('Upload failed'));
         });
 
-        // Obtenir l'URL signée pour l'upload
+        // Get signed URL for upload
         supabase.storage
           .from('temp-uploads')
           .createSignedUploadUrl(fileName)
@@ -58,7 +58,7 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
           .catch(reject);
       });
 
-      // Démarrer la conversion
+      // Start conversion
       const { data, error } = await supabase.functions.invoke('convert-video', {
         body: JSON.stringify({
           fileName,
@@ -72,45 +72,64 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
         throw new Error('Invalid response from conversion service');
       }
 
-      // Polling pour vérifier l'état de la conversion
+      // Polling to check conversion status
       const checkConversion = async () => {
-        const { data: statusData, error: statusError } = await supabase.functions.invoke('check-conversion', {
-          body: JSON.stringify({
-            conversionId: data.conversionId,
-            audioPath: data.audioPath,
-          })
-        });
-
-        if (statusError) throw statusError;
-
-        if (statusData.status === 'completed') {
-          onUploadComplete(data.audioPath);
-          toast({
-            title: "Succès",
-            description: "Le fichier a été converti avec succès",
+        try {
+          const { data: statusData, error: statusError } = await supabase.functions.invoke('check-conversion', {
+            body: JSON.stringify({
+              conversionId: data.conversionId,
+              audioPath: data.audioPath,
+            })
           });
-          return;
-        }
 
-        if (statusData.status === 'error') {
-          throw new Error('Conversion failed');
-        }
+          if (statusError) throw statusError;
 
-        // Continuer le polling toutes les 2 secondes
-        setTimeout(checkConversion, 2000);
+          if (statusData.error) {
+            throw new Error(`Conversion error: ${statusData.error}`);
+          }
+
+          if (statusData.status === 'completed') {
+            onUploadComplete(data.audioPath);
+            toast({
+              title: "Succès",
+              description: "Le fichier a été converti avec succès",
+            });
+            return;
+          }
+
+          if (statusData.status === 'error') {
+            throw new Error(`Conversion failed: ${statusData.details || 'Unknown error'}`);
+          }
+
+          // Update progress if available
+          if (statusData.progress) {
+            setProgress(statusData.progress);
+          }
+
+          // Continue polling every 2 seconds
+          setTimeout(checkConversion, 2000);
+        } catch (error) {
+          console.error('Conversion check error:', error);
+          toast({
+            title: "Erreur de conversion",
+            description: error.message || "Une erreur est survenue lors de la conversion",
+            variant: "destructive",
+          });
+          setIsUploading(false);
+          setProgress(0);
+        }
       };
 
-      // Démarrer le polling
+      // Start polling
       checkConversion();
 
     } catch (error) {
-      console.error('Erreur upload:', error);
+      console.error('Upload error:', error);
       toast({
         title: "Erreur d'upload",
-        description: "Une erreur est survenue lors de l'upload du fichier",
+        description: error.message || "Une erreur est survenue lors de l'upload du fichier",
         variant: "destructive",
       });
-    } finally {
       setIsUploading(false);
       setProgress(0);
     }

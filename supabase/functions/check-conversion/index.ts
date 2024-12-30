@@ -20,7 +20,7 @@ serve(async (req) => {
 
     console.log(`Checking conversion status for: ${conversionId}`);
 
-    // Check conversion status
+    // Check conversion status with detailed error handling
     const response = await fetch(
       `https://api.assemblyai.com/v2/transcript/${conversionId}`,
       {
@@ -31,15 +31,24 @@ serve(async (req) => {
     );
 
     if (!response.ok) {
-      throw new Error('Failed to check conversion status');
+      const errorText = await response.text();
+      console.error('AssemblyAI status check error:', errorText);
+      throw new Error(`Failed to check conversion status: ${errorText}`);
     }
 
     const status = await response.json();
-    console.log('Current status:', status.status);
+    console.log('Current status:', status);
+
+    // Handle different AssemblyAI status states
+    if (status.status === 'error') {
+      throw new Error(`AssemblyAI processing error: ${status.error}`);
+    }
 
     if (status.status === 'completed' && status.audio_url) {
       // Download the converted audio
+      console.log('Downloading converted audio from:', status.audio_url);
       const audioResponse = await fetch(status.audio_url);
+      
       if (!audioResponse.ok) {
         throw new Error('Failed to download converted audio');
       }
@@ -52,6 +61,7 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       );
       
+      console.log('Uploading to audio-recordings:', audioPath);
       const { error: uploadError } = await supabase.storage
         .from('audio-recordings')
         .upload(audioPath, audioBlob, {
@@ -64,21 +74,37 @@ serve(async (req) => {
         throw uploadError;
       }
 
+      console.log('Conversion and upload completed successfully');
       return new Response(
-        JSON.stringify({ status: 'completed', audioPath }),
+        JSON.stringify({ 
+          status: 'completed', 
+          audioPath,
+          audioUrl: status.audio_url 
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // If still processing, return current status
     return new Response(
-      JSON.stringify({ status: status.status }),
+      JSON.stringify({ 
+        status: status.status,
+        progress: status.percentage_complete
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error) {
     console.error('Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      JSON.stringify({ 
+        error: error.message,
+        details: error.stack 
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+        status: 500 
+      }
     );
   }
 });

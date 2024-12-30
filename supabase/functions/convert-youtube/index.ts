@@ -29,8 +29,14 @@ serve(async (req) => {
       );
     }
 
-    const url = `https://youtube-to-mp315.p.rapidapi.com/download?url=${encodeURIComponent(youtubeUrl)}&format=mp3&quality=0`;
-    
+    const apiUrl = 'https://youtube-to-mp315.p.rapidapi.com/download';
+    const queryParams = new URLSearchParams({
+      url: youtubeUrl,
+      format: 'mp3',
+      quality: '0'
+    });
+
+    const url = `${apiUrl}?${queryParams}`;
     console.log('Making request to RapidAPI:', url);
     
     const response = await fetch(url, {

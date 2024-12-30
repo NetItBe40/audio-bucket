@@ -6,8 +6,78 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+async function uploadToAssemblyAI(file: File) {
+  console.log('Starting AssemblyAI upload...')
+  const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
+    method: 'POST',
+    headers: {
+      'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
+    },
+    body: await file.arrayBuffer()
+  })
+
+  if (!uploadResponse.ok) {
+    const errorText = await uploadResponse.text()
+    console.error('AssemblyAI upload error:', errorText)
+    throw new Error(`AssemblyAI upload failed: ${errorText}`)
+  }
+
+  const { upload_url } = await uploadResponse.json()
+  console.log('File uploaded to AssemblyAI:', upload_url)
+  return upload_url
+}
+
+async function requestConversion(audioUrl: string, fileName: string) {
+  console.log('Requesting conversion for:', fileName)
+  const response = await fetch('https://api.assemblyai.com/v2/transcript', {
+    method: 'POST',
+    headers: {
+      'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      audio_url: audioUrl,
+      audio_start_from: 0,
+      audio_end_at: null,
+      format_type: "mp3",
+      audio_description: fileName,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('AssemblyAI conversion request error:', errorText)
+    throw new Error(`AssemblyAI conversion request failed: ${errorText}`)
+  }
+
+  const data = await response.json()
+  console.log('Conversion requested:', data)
+  return data
+}
+
+async function checkConversionStatus(transcriptId: string) {
+  console.log('Checking conversion status for:', transcriptId)
+  const response = await fetch(
+    `https://api.assemblyai.com/v2/transcript/${transcriptId}`,
+    {
+      headers: {
+        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
+      },
+    }
+  )
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('AssemblyAI status check error:', errorText)
+    throw new Error(`AssemblyAI status check failed: ${errorText}`)
+  }
+
+  const status = await response.json()
+  console.log('Current status:', status.status)
+  return status
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -38,71 +108,32 @@ serve(async (req) => {
 
     console.log('Got signed URL:', fileData.signedUrl)
 
-    // First, upload the file to AssemblyAI
-    const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
-      method: 'POST',
-      headers: {
-        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
-      },
-      body: await fetch(fileData.signedUrl).then(res => res.blob())
-    })
-
-    if (!uploadResponse.ok) {
-      throw new Error(`AssemblyAI upload error: ${await uploadResponse.text()}`)
+    // Download the file content
+    const fileResponse = await fetch(fileData.signedUrl)
+    if (!fileResponse.ok) {
+      throw new Error('Failed to download file from temp-uploads')
     }
+    const fileBlob = await fileResponse.blob()
+    const file = new File([fileBlob], originalName, { type: fileBlob.type })
 
-    const { upload_url } = await uploadResponse.json()
-    console.log('File uploaded to AssemblyAI:', upload_url)
+    // Upload to AssemblyAI
+    const uploadUrl = await uploadToAssemblyAI(file)
 
-    // Then request the conversion
-    const conversionResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
-      method: 'POST',
-      headers: {
-        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        audio_url: upload_url,
-        audio_start_from: 0,
-        audio_end_at: null,
-        format_type: "mp3",
-        audio_description: originalName,
-      }),
-    })
-
-    if (!conversionResponse.ok) {
-      throw new Error(`AssemblyAI conversion error: ${await conversionResponse.text()}`)
-    }
-
-    const conversionData = await conversionResponse.json()
-    console.log('Conversion initiated:', conversionData)
+    // Request conversion
+    const conversionData = await requestConversion(uploadUrl, originalName)
     
-    // Poll for completion and get the audio URL
+    // Poll for completion
     let audioUrl = null
     let attempts = 0
     const maxAttempts = 30 // 30 * 2 seconds = 1 minute max wait
     
     while (!audioUrl && attempts < maxAttempts) {
-      const statusResponse = await fetch(
-        `https://api.assemblyai.com/v2/transcript/${conversionData.id}`,
-        {
-          headers: {
-            'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
-          },
-        }
-      )
-      
-      if (!statusResponse.ok) {
-        throw new Error(`AssemblyAI status check error: ${await statusResponse.text()}`)
-      }
-      
-      const status = await statusResponse.json()
-      console.log('Conversion status:', status.status)
+      const status = await checkConversionStatus(conversionData.id)
       
       if (status.status === 'completed' && status.audio_url) {
         audioUrl = status.audio_url
       } else if (status.status === 'error') {
-        throw new Error('Conversion failed')
+        throw new Error('Conversion failed: ' + status.error)
       } else {
         await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds
         attempts++

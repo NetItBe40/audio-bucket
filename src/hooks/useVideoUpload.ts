@@ -15,8 +15,10 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Non authentifié");
 
+      // Sanitize filename by replacing spaces with underscores
+      const sanitizedFileName = file.name.replace(/\s+/g, '_');
       const timestamp = Date.now();
-      const fileName = `${timestamp}-${file.name}`;
+      const fileName = `${timestamp}-${sanitizedFileName}`;
 
       // Upload to temp-uploads with XHR for progress tracking
       const xhr = new XMLHttpRequest();
@@ -58,11 +60,13 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
           .catch(reject);
       });
 
+      console.log('File uploaded successfully to temp-uploads:', fileName);
+
       // Start conversion
       const { data, error } = await supabase.functions.invoke('convert-video', {
         body: JSON.stringify({
           fileName,
-          originalName: file.name,
+          originalName: sanitizedFileName,
         })
       });
 
@@ -71,6 +75,8 @@ export const useVideoUpload = (onUploadComplete: (path: string) => void) => {
       if (!data?.conversionId || !data?.audioPath) {
         throw new Error('Invalid response from conversion service');
       }
+
+      console.log('Conversion started:', { conversionId: data.conversionId, audioPath: data.audioPath });
 
       // Polling to check conversion status
       const checkConversion = async () => {

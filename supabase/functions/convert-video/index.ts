@@ -67,9 +67,9 @@ serve(async (req) => {
     const transcriptionData = await transcriptionResponse.json();
     console.log('Transcription started:', transcriptionData);
 
-    // Create the target audio filename
+    // Create the target audio filename - ensure no spaces in filename
     const timestamp = Date.now();
-    const audioFileName = `converted-${timestamp}-${fileName.replace(/\.[^/.]+$/, '')}.mp3`;
+    const audioFileName = `converted-${timestamp}-${fileName.replace(/\s+/g, '_').replace(/\.[^/.]+$/, '')}.mp3`;
 
     return new Response(
       JSON.stringify({ 

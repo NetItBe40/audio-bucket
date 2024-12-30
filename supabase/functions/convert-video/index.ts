@@ -83,9 +83,9 @@ serve(async (req) => {
             output_format: "mp3",
             engine: "ffmpeg",
             audio_codec: "libmp3lame",
-            audio_bitrate: "192k",
-            audio_frequency: 44100,
-            audio_channels: 2,
+            audio_bitrate: "192",
+            audio_frequency: "44100",
+            audio_channels: "2",
             audio_quality: 0, // Meilleure qualité pour libmp3lame
           },
           "export": {

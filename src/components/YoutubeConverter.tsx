@@ -16,8 +16,29 @@ const YoutubeConverter = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const validateYoutubeUrl = (url: string) => {
+    const pattern = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
+    return pattern.test(url);
+  };
+
   const handleConvert = async () => {
-    if (!url) return;
+    if (!url) {
+      toast({
+        title: "URL manquante",
+        description: "Veuillez entrer une URL YouTube",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!validateYoutubeUrl(url)) {
+      toast({
+        title: "URL invalide",
+        description: "Veuillez entrer une URL YouTube valide",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsConverting(true);
     try {
@@ -40,7 +61,11 @@ const YoutubeConverter = () => {
             variant: "destructive",
           });
         } else {
-          throw new Error(data?.error || 'No download URL received');
+          toast({
+            title: "Erreur de conversion",
+            description: data?.error || "Une erreur est survenue lors de la conversion",
+            variant: "destructive",
+          });
         }
         return;
       }

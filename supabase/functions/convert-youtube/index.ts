@@ -14,27 +14,43 @@ const corsHeaders = {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: corsHeaders,
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const { youtubeUrl } = await req.json();
+    console.log('Received request with URL:', youtubeUrl);
     
-    if (!youtubeUrl || (!youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be'))) {
-      console.error('Invalid YouTube URL:', youtubeUrl);
+    if (!youtubeUrl) {
+      console.error('No YouTube URL provided');
       return new Response(
-        JSON.stringify({ error: 'Invalid YouTube URL' }),
+        JSON.stringify({ 
+          error: 'Missing YouTube URL',
+          details: 'A valid YouTube URL is required'
+        }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400
         }
       );
     }
-    
-    console.log('Processing YouTube URL:', youtubeUrl);
 
+    // Validate YouTube URL format
+    if (!youtubeUrl.match(/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/)) {
+      console.error('Invalid YouTube URL format:', youtubeUrl);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid YouTube URL',
+          details: 'Please provide a valid YouTube video URL'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
+    }
+
+    console.log('Making request to RapidAPI with URL:', youtubeUrl);
     const convertUrl = 'https://youtube-to-mp315.p.rapidapi.com/download';
     const options = {
       method: 'POST',
@@ -43,10 +59,9 @@ serve(async (req) => {
         'X-RapidAPI-Key': rapidApiKey,
         'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
       },
-      body: JSON.stringify({ url: youtubeUrl, format: 'mp3', quality: '0' })
+      body: JSON.stringify({ url: youtubeUrl })
     };
 
-    console.log('Sending request to RapidAPI...');
     const response = await fetch(convertUrl, options);
     
     if (!response.ok) {

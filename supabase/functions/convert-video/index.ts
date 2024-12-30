@@ -29,22 +29,53 @@ serve(async (req) => {
     // Download the file from temp-uploads
     const { data: fileData, error: downloadError } = await supabase.storage
       .from('temp-uploads')
-      .download(fileName)
+      .createSignedUrl(fileName, 3600)
 
     if (downloadError) {
       console.error('Download error:', downloadError)
       throw downloadError
     }
 
-    // For now, we'll just move the file to audio-recordings
-    // In a real implementation, you would send this to a conversion service
+    // Envoyer le fichier à AssemblyAI pour conversion
+    const response = await fetch('https://api.assemblyai.com/v2/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': Deno.env.get('ASSEMBLYAI_API_KEY') ?? '',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: fileData.signedUrl,
+        audio_start_from: 0,
+        audio_end_at: null,
+        chunk_size: 5242880,
+        chunk_overlap: 0,
+        format_type: "mp3",
+        audio_description: originalName,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`AssemblyAI API error: ${await response.text()}`)
+    }
+
+    const conversionData = await response.json()
+    
+    // Télécharger le fichier MP3 converti
+    const audioResponse = await fetch(conversionData.audio_url)
+    if (!audioResponse.ok) {
+      throw new Error('Failed to download converted audio')
+    }
+
+    const audioBlob = await audioResponse.blob()
+    
+    // Upload to audio-recordings
     const timestamp = Date.now()
-    const audioFileName = `converted-${timestamp}-${originalName}`
+    const audioFileName = `converted-${timestamp}-${originalName.replace(/\.[^/.]+$/, '')}.mp3`
     
     const { error: uploadError } = await supabase.storage
       .from('audio-recordings')
-      .upload(audioFileName, fileData, {
-        contentType: 'video/mp4', // Keep original content type for now
+      .upload(audioFileName, audioBlob, {
+        contentType: 'audio/mpeg',
         upsert: false
       })
 

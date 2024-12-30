@@ -58,7 +58,7 @@ serve(async (req) => {
             output_format: "mp3",
             engine: "ffmpeg",
             audio_codec: "mp3",
-            audio_bitrate: "192k",
+            audio_bitrate: 192000, // Changed from "192k" to 192000 (integer in bits/s)
             audio_frequency: 44100,
             audio_channels: 2
           },

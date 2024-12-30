@@ -14,14 +14,14 @@ function extractVideoId(url: string) {
 async function startConversion(videoId: string, rapidApiKey: string) {
   console.log('Starting conversion for video ID:', videoId);
   
-  const url = 'https://youtube-to-mp315.p.rapidapi.com/download';
+  const url = 'https://youtube-to-mp3-v2.p.rapidapi.com/download';
   console.log('Making request to:', url);
   
   const options = {
     method: 'POST',
     headers: {
       'X-RapidAPI-Key': rapidApiKey,
-      'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com',
+      'X-RapidAPI-Host': 'youtube-to-mp3-v2.p.rapidapi.com',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -54,11 +54,11 @@ async function startConversion(videoId: string, rapidApiKey: string) {
     
     while (conversionStatus === 'CONVERTING' && attempts < maxAttempts) {
       const statusResponse = await fetch(
-        `https://youtube-to-mp315.p.rapidapi.com/status/${result.id}`, 
+        `https://youtube-to-mp3-v2.p.rapidapi.com/status/${result.id}`, 
         {
           headers: {
             'X-RapidAPI-Key': rapidApiKey,
-            'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com',
+            'X-RapidAPI-Host': 'youtube-to-mp3-v2.p.rapidapi.com',
           }
         }
       );

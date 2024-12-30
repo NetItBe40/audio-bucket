@@ -23,13 +23,25 @@ serve(async (req) => {
       body = await req.json()
     } catch (error) {
       console.error('Error parsing request body:', error)
-      throw new Error('Invalid request body')
+      return new Response(
+        JSON.stringify({ error: 'Invalid request body' }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
     }
     
     const { videoChunk, fileName, chunkIndex, totalChunks, userId } = body
     
     if (!videoChunk || !fileName || chunkIndex === undefined || !totalChunks || !userId) {
-      throw new Error('Missing required parameters')
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameters' }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
     }
     
     console.log(`Processing chunk ${chunkIndex + 1}/${totalChunks} for file ${fileName}`)
@@ -50,28 +62,53 @@ serve(async (req) => {
       }
     } catch (error) {
       console.error('Error converting base64 to binary:', error)
-      throw new Error('Invalid video chunk data')
+      return new Response(
+        JSON.stringify({ error: 'Invalid video chunk data' }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
     }
 
     const timestamp = Date.now()
     const randomString = Math.random().toString(36).substring(7)
     const tempFileName = `${userId}/temp-${timestamp}-${randomString}-chunk-${chunkIndex}`
-
+    
     console.log(`Uploading chunk to temporary storage: ${tempFileName}`)
 
-    // Upload chunk with error handling
-    try {
-      const { error: uploadError } = await supabase.storage
-        .from('temp-uploads')
-        .upload(tempFileName, bytes, {
-          contentType: 'application/octet-stream',
-          upsert: true
-        })
+    // Upload chunk with error handling and retry logic
+    let uploadAttempts = 0;
+    const maxUploadAttempts = 3;
+    
+    while (uploadAttempts < maxUploadAttempts) {
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from('temp-uploads')
+          .upload(tempFileName, bytes, {
+            contentType: 'application/octet-stream',
+            upsert: true
+          })
 
-      if (uploadError) throw uploadError
-    } catch (error) {
-      console.error('Error uploading chunk:', error)
-      throw new Error(`Failed to upload chunk: ${error.message}`)
+        if (uploadError) throw uploadError
+        break; // Success, exit loop
+      } catch (error) {
+        uploadAttempts++;
+        console.error(`Upload attempt ${uploadAttempts} failed:`, error)
+        
+        if (uploadAttempts === maxUploadAttempts) {
+          return new Response(
+            JSON.stringify({ error: `Failed to upload chunk after ${maxUploadAttempts} attempts` }),
+            { 
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
+          )
+        }
+        
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, uploadAttempts) * 1000));
+      }
     }
 
     // Process final chunk
@@ -85,7 +122,7 @@ serve(async (req) => {
         await ffmpeg.load()
         console.log('FFmpeg loaded successfully')
 
-        // Combine chunks
+        // Combine chunks with improved memory handling
         console.log('Combining video chunks...')
         const chunks = []
         for (let i = 0; i < totalChunks; i++) {
@@ -104,36 +141,58 @@ serve(async (req) => {
           chunks.push(new Uint8Array(await chunkData.arrayBuffer()))
         }
 
-        // Combine video chunks
+        // Combine video chunks with memory optimization
         const totalSize = chunks.reduce((acc, chunk) => acc + chunk.length, 0)
         const combinedVideo = new Uint8Array(totalSize)
         let offset = 0
         for (const chunk of chunks) {
           combinedVideo.set(chunk, offset)
           offset += chunk.length
+          // Free up memory
+          chunk = null
         }
 
         console.log('Combined video chunks, starting conversion...')
 
-        // Convert to audio
+        // Convert to audio with optimized settings
         await ffmpeg.writeFile('input.webm', combinedVideo)
-        await ffmpeg.exec(['-i', 'input.webm', '-vn', '-acodec', 'libmp3lame', '-q:a', '2', 'output.mp3'])
+        await ffmpeg.exec([
+          '-i', 'input.webm',
+          '-vn',
+          '-acodec', 'libmp3lame',
+          '-q:a', '2',
+          '-y', // Overwrite output file if it exists
+          'output.mp3'
+        ])
         const mp3Data = await ffmpeg.readFile('output.mp3')
         
         console.log('Conversion completed, uploading result...')
         
-        // Upload converted audio
+        // Upload converted audio with retry logic
         const audioFileName = `${userId}/converted-${timestamp}-${randomString}.mp3`
-        const { error: audioUploadError } = await supabase.storage
-          .from('audio-recordings')
-          .upload(audioFileName, mp3Data, {
-            contentType: 'audio/mpeg',
-            upsert: true
-          })
+        let audioUploadAttempts = 0;
+        
+        while (audioUploadAttempts < maxUploadAttempts) {
+          try {
+            const { error: audioUploadError } = await supabase.storage
+              .from('audio-recordings')
+              .upload(audioFileName, mp3Data, {
+                contentType: 'audio/mpeg',
+                upsert: true
+              })
 
-        if (audioUploadError) {
-          console.error('Error uploading converted audio:', audioUploadError)
-          throw audioUploadError
+            if (audioUploadError) throw audioUploadError
+            break; // Success, exit loop
+          } catch (error) {
+            audioUploadAttempts++;
+            console.error(`Audio upload attempt ${audioUploadAttempts} failed:`, error)
+            
+            if (audioUploadAttempts === maxUploadAttempts) {
+              throw new Error(`Failed to upload converted audio after ${maxUploadAttempts} attempts`)
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, audioUploadAttempts) * 1000));
+          }
         }
 
         console.log('Successfully uploaded converted audio:', audioFileName)
@@ -159,9 +218,21 @@ serve(async (req) => {
             } 
           }
         )
-      } catch (ffmpegError) {
-        console.error('FFmpeg error:', ffmpegError)
-        throw new Error(`FFmpeg error: ${ffmpegError.message}`)
+      } catch (error) {
+        console.error('Error in final chunk processing:', error)
+        return new Response(
+          JSON.stringify({ 
+            error: 'Error processing final chunk',
+            details: error.message
+          }),
+          { 
+            status: 500,
+            headers: { 
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            } 
+          }
+        )
       }
     }
 
@@ -187,7 +258,7 @@ serve(async (req) => {
         details: error.stack
       }),
       { 
-        status: 400,
+        status: 500,
         headers: { 
           ...corsHeaders,
           'Content-Type': 'application/json'

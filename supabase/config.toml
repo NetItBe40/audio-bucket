@@ -1,4 +1,4 @@
 project_id = "lxxqhqdnnlnjtqoswlbj"
 
-[functions.transcribe]
+[functions.convert-large-video]
 verify_jwt = true

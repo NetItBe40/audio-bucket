@@ -51,28 +51,31 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log('Conversion response:', data);
+    console.log('API Response:', data);
 
-    if (data.status === 'fail') {
-      throw new Error(data.msg || 'Échec de la conversion');
-    }
-
-    if (!data.link) {
-      throw new Error('Lien de téléchargement non disponible');
-    }
-
-    return new Response(
-      JSON.stringify({
-        downloadUrl: data.link,
-        title: data.title
-      }),
-      { 
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'application/json'
+    // Handle different API response statuses
+    switch(data.status) {
+      case 'ok':
+        if (!data.link) {
+          throw new Error('Lien de téléchargement manquant dans la réponse');
         }
-      }
-    );
+        return new Response(
+          JSON.stringify({
+            downloadUrl: data.link,
+            title: data.title
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      
+      case 'processing':
+        throw new Error('La conversion est en cours, veuillez réessayer dans quelques instants');
+      
+      case 'fail':
+        throw new Error(data.msg || 'Échec de la conversion');
+      
+      default:
+        throw new Error('Réponse inattendue de l\'API');
+    }
 
   } catch (error) {
     console.error('Error in convert-youtube function:', error);

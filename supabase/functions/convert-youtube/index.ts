@@ -24,8 +24,10 @@ serve(async (req) => {
       throw new Error('RapidAPI key not configured');
     }
 
-    // Appel à l'API RapidAPI pour la conversion
-    console.log('Making request to RapidAPI...');
+    // Log the request details
+    console.log('Making request to RapidAPI with URL:', youtubeUrl);
+
+    // Premier appel pour initier la conversion
     const response = await fetch('https://youtube-to-mp315.p.rapidapi.com/download', {
       method: 'POST',
       headers: {
@@ -36,25 +38,30 @@ serve(async (req) => {
       body: JSON.stringify({ url: youtubeUrl })
     });
 
+    // Log the response status
+    console.log('RapidAPI response status:', response.status);
+
     if (!response.ok) {
+      const errorText = await response.text();
       console.error('RapidAPI error response:', {
         status: response.status,
-        statusText: response.statusText
+        statusText: response.statusText,
+        body: errorText
       });
-      const errorText = await response.text();
-      console.error('Error details:', errorText);
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
+      throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const result = await response.json();
-    console.log('RapidAPI response:', result);
+    console.log('RapidAPI initial response:', result);
 
     if (result.status === 'ERROR') {
+      console.error('Conversion error:', result);
       throw new Error(result.message || 'Conversion failed');
     }
 
     // Si nous avons une URL de téléchargement directe
     if (result.downloadUrl) {
+      console.log('Direct download URL available:', result.downloadUrl);
       return new Response(
         JSON.stringify({
           downloadUrl: result.downloadUrl,
@@ -88,13 +95,20 @@ serve(async (req) => {
       );
 
       if (!statusResponse.ok) {
-        throw new Error(`Status check failed: ${statusResponse.status}`);
+        const errorText = await statusResponse.text();
+        console.error('Status check error:', {
+          status: statusResponse.status,
+          statusText: statusResponse.statusText,
+          body: errorText
+        });
+        throw new Error(`Status check failed: ${statusResponse.status} - ${errorText}`);
       }
 
       const statusResult = await statusResponse.json();
       console.log('Status check result:', statusResult);
 
       if (statusResult.status === 'AVAILABLE') {
+        console.log('Conversion completed successfully:', statusResult);
         return new Response(
           JSON.stringify({
             downloadUrl: statusResult.downloadUrl,
@@ -108,7 +122,8 @@ serve(async (req) => {
           }
         );
       } else if (statusResult.status === 'ERROR') {
-        throw new Error('Conversion failed');
+        console.error('Conversion failed:', statusResult);
+        throw new Error(statusResult.message || 'Conversion failed');
       }
 
       conversionStatus = statusResult.status;
@@ -119,13 +134,18 @@ serve(async (req) => {
       }
     }
 
-    throw new Error('Conversion timeout');
+    if (attempts >= maxAttempts) {
+      console.error('Conversion timeout after maximum attempts');
+      throw new Error('La conversion a pris trop de temps');
+    }
+
+    throw new Error('Échec inattendu de la conversion');
 
   } catch (error) {
     console.error('Error in convert-youtube function:', error);
     return new Response(
       JSON.stringify({
-        error: error.message || 'Une erreur est survenue'
+        error: error.message || 'Une erreur est survenue lors de la conversion'
       }),
       { 
         headers: { 

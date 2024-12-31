@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -42,13 +42,20 @@ const YoutubeConverter = () => {
 
     setIsConverting(true);
     try {
+      console.log('Starting conversion for URL:', url);
       const { data, error } = await supabase.functions.invoke('convert-youtube', {
         body: { youtubeUrl: url }
       });
 
-      if (error) throw error;
+      console.log('Conversion response:', { data, error });
+
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
+      }
       
       if (!data?.downloadUrl) {
+        console.error('Invalid response data:', data);
         throw new Error(data?.error || "Une erreur est survenue lors de la conversion");
       }
 
@@ -57,6 +64,11 @@ const YoutubeConverter = () => {
         title: data.title || 'YouTube conversion'
       });
       setShowSaveDialog(true);
+      
+      toast({
+        title: "Succès",
+        description: "La vidéo a été convertie avec succès",
+      });
     } catch (error) {
       console.error('Conversion error:', error);
       toast({

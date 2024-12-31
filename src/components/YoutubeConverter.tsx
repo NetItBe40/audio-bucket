@@ -21,6 +21,32 @@ const YoutubeConverter = () => {
     return pattern.test(url);
   };
 
+  const checkConversion = async (retryCount = 0, maxRetries = 10) => {
+    if (retryCount >= maxRetries) {
+      throw new Error("La conversion a pris trop de temps, veuillez réessayer");
+    }
+
+    const { data, error } = await supabase.functions.invoke('convert-youtube', {
+      body: { youtubeUrl: url }
+    });
+
+    console.log('Conversion check response:', { data, error, retryCount });
+
+    if (error) throw error;
+
+    if (data.status === 'processing') {
+      // Wait 3 seconds before retrying
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      return checkConversion(retryCount + 1, maxRetries);
+    }
+
+    if (data.status === 'completed') {
+      return data;
+    }
+
+    throw new Error(data.error || "Une erreur est survenue lors de la conversion");
+  };
+
   const handleConvert = async () => {
     if (!url) {
       toast({
@@ -43,20 +69,12 @@ const YoutubeConverter = () => {
     setIsConverting(true);
     try {
       console.log('Starting conversion for URL:', url);
-      const { data, error } = await supabase.functions.invoke('convert-youtube', {
-        body: { youtubeUrl: url }
-      });
-
-      console.log('Conversion response:', { data, error });
-
-      if (error) {
-        console.error('Supabase function error:', error);
-        throw error;
-      }
       
+      const data = await checkConversion();
+
       if (!data?.downloadUrl) {
         console.error('Invalid response data:', data);
-        throw new Error(data?.error || "Une erreur est survenue lors de la conversion");
+        throw new Error("Une erreur est survenue lors de la conversion");
       }
 
       setConvertedFile({

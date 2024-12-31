@@ -6,7 +6,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -19,7 +18,6 @@ serve(async (req) => {
       throw new Error('URL YouTube manquante');
     }
 
-    // Validate YouTube URL format
     const youtubeUrlPattern = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
     if (!youtubeUrlPattern.test(youtubeUrl)) {
       throw new Error('URL YouTube invalide');
@@ -45,8 +43,7 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('RapidAPI error:', errorData);
+      console.error('RapidAPI error:', response.status, response.statusText);
       throw new Error(`Erreur de l'API RapidAPI: ${response.status}`);
     }
 
@@ -62,13 +59,23 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             downloadUrl: data.link,
-            title: data.title
+            title: data.title,
+            status: 'completed'
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       
       case 'processing':
-        throw new Error('La conversion est en cours, veuillez réessayer dans quelques instants');
+        return new Response(
+          JSON.stringify({
+            status: 'processing',
+            message: 'La conversion est en cours'
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 202 // Accepted
+          }
+        );
       
       case 'fail':
         throw new Error(data.msg || 'Échec de la conversion');

@@ -38,8 +38,9 @@ serve(async (req) => {
       body: JSON.stringify({ url: youtubeUrl })
     });
 
-    // Log the response status
+    // Log the response status and headers
     console.log('RapidAPI response status:', response.status);
+    console.log('RapidAPI response headers:', Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -107,7 +108,7 @@ serve(async (req) => {
       const statusResult = await statusResponse.json();
       console.log('Status check result:', statusResult);
 
-      if (statusResult.status === 'AVAILABLE') {
+      if (statusResult.status === 'AVAILABLE' && statusResult.downloadUrl) {
         console.log('Conversion completed successfully:', statusResult);
         return new Response(
           JSON.stringify({

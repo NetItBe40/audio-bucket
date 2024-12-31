@@ -25,37 +25,44 @@ serve(async (req) => {
       throw new Error('URL YouTube invalide');
     }
 
-    const SELLSY_API_KEY = Deno.env.get('SELLSY_API_KEY');
-    if (!SELLSY_API_KEY) {
-      throw new Error('Clé API Sellsy non configurée');
+    const RAPIDAPI_KEY = Deno.env.get('RAPIDAPI_KEY');
+    if (!RAPIDAPI_KEY) {
+      throw new Error('Clé API RapidAPI non configurée');
     }
 
-    console.log('Calling Sellsy API for conversion...');
+    console.log('Calling RapidAPI YouTube MP3 API...');
     
-    const response = await fetch('https://api.sellsy.com/v2/youtube/convert', {
-      method: 'POST',
+    const response = await fetch('https://youtube-mp36.p.rapidapi.com/dl', {
+      method: 'GET',
       headers: {
-        'Authorization': `Bearer ${SELLSY_API_KEY}`,
-        'Content-Type': 'application/json',
+        'X-RapidAPI-Key': RAPIDAPI_KEY,
+        'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com'
       },
-      body: JSON.stringify({
-        url: youtubeUrl,
-        format: 'mp3'
+      params: new URLSearchParams({
+        id: youtubeUrl.split('v=')[1] || youtubeUrl.split('/').pop() || ''
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Sellsy API error:', errorData);
-      throw new Error(`Erreur de l'API Sellsy: ${response.status}`);
+      console.error('RapidAPI error:', errorData);
+      throw new Error(`Erreur de l'API RapidAPI: ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('Conversion successful:', data);
+    console.log('Conversion response:', data);
+
+    if (data.status === 'fail') {
+      throw new Error(data.msg || 'Échec de la conversion');
+    }
+
+    if (!data.link) {
+      throw new Error('Lien de téléchargement non disponible');
+    }
 
     return new Response(
       JSON.stringify({
-        downloadUrl: data.downloadUrl,
+        downloadUrl: data.link,
         title: data.title
       }),
       { 

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import ytdl from 'https://esm.sh/ytdl-core@4.11.5';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,7 +7,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -19,128 +19,42 @@ serve(async (req) => {
       throw new Error('URL YouTube manquante');
     }
 
-    const rapidApiKey = Deno.env.get('RAPIDAPI_KEY');
-    if (!rapidApiKey) {
-      throw new Error('RapidAPI key not configured');
+    // Valider l'URL YouTube
+    if (!ytdl.validateURL(youtubeUrl)) {
+      throw new Error('URL YouTube invalide');
     }
 
-    // Log the request details
-    console.log('Making request to RapidAPI with URL:', youtubeUrl);
-
-    // Premier appel pour initier la conversion
-    const response = await fetch('https://youtube-to-mp315.p.rapidapi.com/download', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'X-RapidAPI-Key': rapidApiKey,
-        'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
-      },
-      body: JSON.stringify({ url: youtubeUrl })
+    console.log('Getting video info...');
+    const info = await ytdl.getInfo(youtubeUrl);
+    
+    // Sélectionner le meilleur format audio
+    const audioFormat = ytdl.chooseFormat(info.formats, { 
+      quality: 'highestaudio',
+      filter: 'audioonly' 
     });
 
-    // Log the response status and headers
-    console.log('RapidAPI response status:', response.status);
-    console.log('RapidAPI response headers:', Object.fromEntries(response.headers.entries()));
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('RapidAPI error response:', {
-        status: response.status,
-        statusText: response.statusText,
-        body: errorText
-      });
-      throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+    if (!audioFormat || !audioFormat.url) {
+      throw new Error('Aucun format audio disponible pour cette vidéo');
     }
 
-    const result = await response.json();
-    console.log('RapidAPI initial response:', result);
+    console.log('Audio format selected:', {
+      quality: audioFormat.quality,
+      container: audioFormat.container,
+      audioCodec: audioFormat.audioCodec
+    });
 
-    if (result.status === 'ERROR') {
-      console.error('Conversion error:', result);
-      throw new Error(result.message || 'Conversion failed');
-    }
-
-    // Si nous avons une URL de téléchargement directe
-    if (result.downloadUrl) {
-      console.log('Direct download URL available:', result.downloadUrl);
-      return new Response(
-        JSON.stringify({
-          downloadUrl: result.downloadUrl,
-          title: result.title || 'YouTube conversion'
-        }),
-        { 
-          headers: { 
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          }
+    return new Response(
+      JSON.stringify({
+        downloadUrl: audioFormat.url,
+        title: info.videoDetails.title
+      }),
+      { 
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         }
-      );
-    }
-
-    // Attendre que la conversion soit terminée si nécessaire
-    let conversionStatus = result.status || 'CONVERTING';
-    let attempts = 0;
-    const maxAttempts = 30; // 30 secondes maximum
-
-    while (conversionStatus === 'CONVERTING' && attempts < maxAttempts) {
-      console.log(`Checking conversion status (attempt ${attempts + 1}/${maxAttempts})...`);
-      
-      const statusResponse = await fetch(
-        `https://youtube-to-mp315.p.rapidapi.com/status/${result.id}`,
-        {
-          headers: {
-            'X-RapidAPI-Key': rapidApiKey,
-            'X-RapidAPI-Host': 'youtube-to-mp315.p.rapidapi.com'
-          }
-        }
-      );
-
-      if (!statusResponse.ok) {
-        const errorText = await statusResponse.text();
-        console.error('Status check error:', {
-          status: statusResponse.status,
-          statusText: statusResponse.statusText,
-          body: errorText
-        });
-        throw new Error(`Status check failed: ${statusResponse.status} - ${errorText}`);
       }
-
-      const statusResult = await statusResponse.json();
-      console.log('Status check result:', statusResult);
-
-      if (statusResult.status === 'AVAILABLE' && statusResult.downloadUrl) {
-        console.log('Conversion completed successfully:', statusResult);
-        return new Response(
-          JSON.stringify({
-            downloadUrl: statusResult.downloadUrl,
-            title: statusResult.title || 'YouTube conversion'
-          }),
-          { 
-            headers: { 
-              ...corsHeaders,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-      } else if (statusResult.status === 'ERROR') {
-        console.error('Conversion failed:', statusResult);
-        throw new Error(statusResult.message || 'Conversion failed');
-      }
-
-      conversionStatus = statusResult.status;
-      attempts++;
-
-      if (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-
-    if (attempts >= maxAttempts) {
-      console.error('Conversion timeout after maximum attempts');
-      throw new Error('La conversion a pris trop de temps');
-    }
-
-    throw new Error('Échec inattendu de la conversion');
+    );
 
   } catch (error) {
     console.error('Error in convert-youtube function:', error);

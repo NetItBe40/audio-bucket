@@ -30,17 +30,18 @@ serve(async (req) => {
       throw new Error('Clé API RapidAPI non configurée');
     }
 
-    console.log('Calling RapidAPI YouTube MP3 API...');
+    // Extract video ID from URL
+    const videoId = youtubeUrl.includes('v=') 
+      ? youtubeUrl.split('v=')[1].split('&')[0]
+      : youtubeUrl.split('/').pop();
+
+    console.log('Calling RapidAPI YouTube MP3 API for video ID:', videoId);
     
-    const response = await fetch('https://youtube-mp36.p.rapidapi.com/dl', {
-      method: 'GET',
+    const response = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
       headers: {
         'X-RapidAPI-Key': RAPIDAPI_KEY,
         'X-RapidAPI-Host': 'youtube-mp36.p.rapidapi.com'
-      },
-      params: new URLSearchParams({
-        id: youtubeUrl.split('v=')[1] || youtubeUrl.split('/').pop() || ''
-      })
+      }
     });
 
     if (!response.ok) {
